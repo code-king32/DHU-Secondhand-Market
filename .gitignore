@@ -1,0 +1,20 @@
+# Maven 编译产物
+target/
+*.class
+
+# IDE 配置
+.idea/
+*.iml
+.vscode/
+
+# 上传的图片（本地文件不进仓库）
+uploads/
+
+# 本地配置（含数据库密码，不要提交）
+application-local.yml
+application-local.yaml
+application-local.properties
+
+# 日志
+*.log
+logs/
