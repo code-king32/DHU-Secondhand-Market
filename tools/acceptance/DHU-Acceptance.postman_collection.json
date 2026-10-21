@@ -1,0 +1,1590 @@
+{
+  "info": {
+    "name": "DHU 组长验收",
+    "description": "仅针对独立的 dhu_secondhand_acceptance 本地测试库。先初始化，选择配套环境，然后按顺序运行完整集合。使用 Postman 默认 Cookie jar；每次切换身份均正常退出和登录。不会发送邮件。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 身份与发布",
+      "item": [
+        {
+          "name": "退出当前身份",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { if (pm.response.code !== 204) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "未登录本人信息",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", function () { if (pm.response.code !== 401) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "seller登录",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{sellerEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"账号身份正确\", function () { if (!(data.email === pm.environment.get(\"sellerEmail\") && data.role === \"USER\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"sellerId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "查看预置商品状态",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/goods/mine"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"包含商品列表\", function () { if (!(Array.isArray(data.items) && data.total >= 5)) throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "发布本轮商品",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"验收集合新建教材\",\n  \"description\": \"本轮请求集合创建，支持重复运行\",\n  \"price\": 25.5,\n  \"category\": \"TEXTBOOK\",\n  \"imageUrls\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/goods"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { if (pm.response.code !== 201) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为 ON_SALE\", function () { if (!(data.status === \"ON_SALE\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"goodsId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "退出当前身份",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { if (pm.response.code !== 204) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 买家申请与权限",
+      "item": [
+        {
+          "name": "buyer登录",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{buyerEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"账号身份正确\", function () { if (!(data.email === pm.environment.get(\"buyerEmail\") && data.role === \"USER\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"buyerId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "普通用户不能读取管理举报",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/admin/reports"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () { if (pm.response.code !== 403) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "买家不能编辑卖家商品",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"验收集合新建教材\",\n  \"description\": \"本轮请求集合创建，支持重复运行\",\n  \"price\": 25.5,\n  \"category\": \"TEXTBOOK\",\n  \"imageUrls\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/goods/{{goodsId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () { if (pm.response.code !== 403) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "收藏商品",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/favorites/{{goodsId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "重复收藏保持幂等",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/favorites/{{goodsId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "读取收藏",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/favorites"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"收藏包含本轮商品\", function () { if (!(data.items.some(item => item.goodsId === Number(pm.environment.get(\"goodsId\"))))) throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "申请交易",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"goodsId\": \"{{goodsId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/trades"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { if (pm.response.code !== 201) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为 PENDING\", function () { if (!(data.status === \"PENDING\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"tradeId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "拒绝重复申请",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"goodsId\": \"{{goodsId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/trades"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 409\", function () { if (pm.response.code !== 409) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "买家不能接受申请",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/trades/{{tradeId}}/accept"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () { if (pm.response.code !== 403) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "退出当前身份",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { if (pm.response.code !== 204) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 双方确认与评价",
+      "item": [
+        {
+          "name": "seller登录",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{sellerEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"账号身份正确\", function () { if (!(data.email === pm.environment.get(\"sellerEmail\") && data.role === \"USER\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"sellerId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "卖家接受申请",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/trades/{{tradeId}}/accept"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为 ACCEPTED\", function () { if (!(data.status === \"ACCEPTED\")) throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "卖家确认成交",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/trades/{{tradeId}}/confirm"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为 ACCEPTED\", function () { if (!(data.status === \"ACCEPTED\")) throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "退出当前身份",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { if (pm.response.code !== 204) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "buyer登录",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{buyerEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"账号身份正确\", function () { if (!(data.email === pm.environment.get(\"buyerEmail\") && data.role === \"USER\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"buyerId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "买家确认成交",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/trades/{{tradeId}}/confirm"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为 COMPLETED\", function () { if (!(data.status === \"COMPLETED\")) throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "公开详情显示已售出",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/goods/{{goodsId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为 SOLD\", function () { if (data.status !== \"SOLD\") throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "买家评价卖家",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tradeId\": \"{{tradeId}}\",\n  \"rating\": 5,\n  \"comment\": \"验收交易完成，描述相符\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/reviews"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { if (pm.response.code !== 201) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "重复评价被拒绝",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tradeId\": \"{{tradeId}}\",\n  \"rating\": 5,\n  \"comment\": \"重复评价\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/reviews"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 409\", function () { if (pm.response.code !== 409) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "发布求购",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"验收求购教材\",\n  \"description\": \"校内面交\",\n  \"maxPrice\": 30,\n  \"category\": \"TEXTBOOK\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/wanted"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { if (pm.response.code !== 201) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为 OPEN\", function () { if (!(data.status === \"OPEN\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"wantedId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "关闭本人求购",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/wanted/{{wantedId}}/close"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为 CLOSED\", function () { if (!(data.status === \"CLOSED\")) throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "取消本轮收藏",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/favorites/{{goodsId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { if (pm.response.code !== 204) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "提交举报",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetType\": \"USER\",\n  \"targetId\": 4,\n  \"reason\": \"验收举报与申诉流程\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/reports"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { if (pm.response.code !== 201) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为 OPEN\", function () { if (!(data.status === \"OPEN\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"reportId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "退出当前身份",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { if (pm.response.code !== 204) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "seller登录",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{sellerEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"账号身份正确\", function () { if (!(data.email === pm.environment.get(\"sellerEmail\") && data.role === \"USER\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"sellerId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "卖家评价买家",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tradeId\": \"{{tradeId}}\",\n  \"rating\": 4,\n  \"comment\": \"沟通顺利\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/reviews"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { if (pm.response.code !== 201) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "查看卖家信誉",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/users/{{sellerId}}/reputation"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"已有评价\", function () { if (!(data.reviewCount >= 2 && data.averageRating === 5)) throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "退出当前身份",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { if (pm.response.code !== 204) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 举报申诉与管理",
+      "item": [
+        {
+          "name": "admin登录",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"账号身份正确\", function () { if (!(data.email === pm.environment.get(\"adminEmail\") && data.role === \"ADMIN\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"adminId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "管理员驳回举报",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"REJECTED\",\n  \"note\": \"需要补充说明\",\n  \"action\": \"NONE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/admin/reports/{{reportId}}/resolution"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为 REJECTED\", function () { if (!(data.status === \"REJECTED\")) throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "退出当前身份",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { if (pm.response.code !== 204) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "buyer登录",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{buyerEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"账号身份正确\", function () { if (!(data.email === pm.environment.get(\"buyerEmail\") && data.role === \"USER\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"buyerId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "举报人申诉",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"补充核查说明\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/reports/{{reportId}}/appeals"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { if (pm.response.code !== 201) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为 OPEN\", function () { if (!(data.status === \"OPEN\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"appealId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "退出当前身份",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { if (pm.response.code !== 204) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "admin登录",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"账号身份正确\", function () { if (!(data.email === pm.environment.get(\"adminEmail\") && data.role === \"ADMIN\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"adminId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "申诉成立并重开举报",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"UPHELD\",\n  \"note\": \"重新核查\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/admin/appeals/{{appealId}}/resolution"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为 UPHELD\", function () { if (!(data.status === \"UPHELD\")) throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "重新处理举报",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"RESOLVED\",\n  \"note\": \"验收核查完成\",\n  \"action\": \"NONE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/admin/reports/{{reportId}}/resolution"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为 RESOLVED\", function () { if (!(data.status === \"RESOLVED\")) throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "检查完整审计链",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/admin/reports/{{reportId}}/audit"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"五条审计记录\", function () { if (!(Array.isArray(data) && data.length === 5)) throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "禁用其他测试用户",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/admin/users/4/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为禁用\", function () { if (!(data.status === 1)) throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "退出当前身份",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { if (pm.response.code !== 204) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "已禁用账号不能登录",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{otherEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () { if (pm.response.code !== 403) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "admin登录",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"账号身份正确\", function () { if (!(data.email === pm.environment.get(\"adminEmail\") && data.role === \"ADMIN\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"adminId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "恢复其他测试用户",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/admin/users/4/status"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"状态为正常\", function () { if (!(data.status === 0)) throw new Error(\"Response did not match\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "退出当前身份",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { if (pm.response.code !== 204) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "other登录",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{otherEmail}}\",\n  \"password\": \"{{demoPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });",
+                  "var data = pm.response.json();",
+                  "pm.test(\"账号身份正确\", function () { if (!(data.email === pm.environment.get(\"otherEmail\") && data.role === \"USER\")) throw new Error(\"Response did not match\"); });",
+                  "pm.environment.set(\"otherId\", data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "恢复后可以读取本人信息",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { if (pm.response.code !== 200) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "退出当前身份",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", function () { if (pm.response.code !== 204) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "退出后本人信息失效",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", function () { if (pm.response.code !== 401) throw new Error(\"Unexpected HTTP \" + pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
