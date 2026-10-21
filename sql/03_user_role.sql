@@ -1,0 +1,4 @@
+USE dhu_secondhand;
+
+ALTER TABLE app_user
+    ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'USER' COMMENT '角色：USER或ADMIN';

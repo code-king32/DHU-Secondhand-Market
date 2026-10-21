@@ -1,0 +1,27 @@
+DROP TABLE IF EXISTS registration_email_code;
+DROP TABLE IF EXISTS app_user;
+
+CREATE TABLE app_user (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(254) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    nickname VARCHAR(50) NOT NULL,
+    email_verified TINYINT NOT NULL DEFAULT 0,
+    status TINYINT NOT NULL DEFAULT 0,
+    role VARCHAR(16) NOT NULL DEFAULT 'USER',
+    session_version INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE registration_email_code (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(254) NOT NULL UNIQUE,
+    code_hash VARCHAR(255) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    last_sent_at DATETIME NOT NULL,
+    failed_attempts INT NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
+    consumed_at DATETIME,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
