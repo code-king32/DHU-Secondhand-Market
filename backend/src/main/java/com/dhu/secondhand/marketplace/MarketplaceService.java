@@ -24,10 +24,12 @@ public class MarketplaceService {
     private static final Set<String> CATEGORIES = Set.of("TEXTBOOK", "ELECTRONICS", "DAILY", "CLOTHING", "OTHER");
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
+    private final ImageStorage imageStorage;
 
-    public MarketplaceService(JdbcTemplate jdbc, ObjectMapper json) {
+    public MarketplaceService(JdbcTemplate jdbc, ObjectMapper json, ImageStorage imageStorage) {
         this.jdbc = jdbc;
         this.json = json;
+        this.imageStorage = imageStorage;
     }
 
     @Transactional
@@ -51,7 +53,9 @@ public class MarketplaceService {
             statement.setString(6, images);
             return statement;
         }, key);
-        return findGoods(key.getKey().longValue(), false);
+        long id = key.getKey().longValue();
+        imageStorage.bind(actor, id, request.imageUrls(), List.of());
+        return findGoods(id, false);
     }
 
     @Transactional
@@ -62,6 +66,7 @@ public class MarketplaceService {
         GoodsView goods = findGoods(id, true);
         owner(actor, goods.sellerId());
         editable(goods);
+        imageStorage.bind(actor, id, request.imageUrls(), goods.imageUrls());
         jdbc.update("""
                 UPDATE market_goods SET title=?,description=?,price=?,category=?,image_urls=?,updated_at=CURRENT_TIMESTAMP
                 WHERE id=?
@@ -281,6 +286,7 @@ public class MarketplaceService {
     private String images(List<String> values) {
         List<String> safe = values == null ? List.of() : List.copyOf(values);
         for (String value : safe) {
+            if (value.matches("/api/images/[0-9a-f]{32}\\.(jpg|png)")) continue;
             try {
                 URI uri = URI.create(value);
                 if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
@@ -288,7 +294,7 @@ public class MarketplaceService {
                     throw new IllegalArgumentException();
                 }
             } catch (IllegalArgumentException exception) {
-                throw error(HttpStatus.BAD_REQUEST, "图片地址必须是有效的 HTTP 或 HTTPS URL");
+                throw error(HttpStatus.BAD_REQUEST, "请选择已上传的图片或有效的 HTTP/HTTPS 图片地址");
             }
         }
         try { return json.writeValueAsString(safe); }

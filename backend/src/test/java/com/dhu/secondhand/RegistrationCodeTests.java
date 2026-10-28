@@ -4,6 +4,7 @@ import com.dhu.secondhand.identity.exception.RegistrationCodeException;
 import com.dhu.secondhand.identity.service.MailService;
 import com.dhu.secondhand.identity.service.RegistrationCodeService;
 import com.dhu.secondhand.identity.service.VerificationCodeHasher;
+import com.dhu.secondhand.identity.service.MailDeliveryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties = {
+        "app.jobs.enabled=false", "app.abuse.enabled=false", "app.mail.key-file=target/test-mail-code.key",
         "spring.mail.username=test@example.com",
         "spring.mail.test-connection=false",
         "spring.datasource.url=jdbc:h2:mem:registration_code_test;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE",
@@ -58,6 +60,8 @@ class RegistrationCodeTests {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private VerificationCodeHasher hasher;
     @Autowired private RegistrationCodeService service;
+    @Autowired private MailDeliveryService deliveries;
+    @Autowired private org.springframework.transaction.PlatformTransactionManager manager;
 
     @MockitoBean private MailService mailService;
     @MockitoBean private Clock clock;
@@ -66,6 +70,7 @@ class RegistrationCodeTests {
     void fixTime() {
         when(clock.getZone()).thenReturn(ZoneId.of("Asia/Shanghai"));
         when(clock.instant()).thenReturn(NOW);
+        jdbc.update("DELETE FROM app_mail_delivery");
     }
 
     @Test
@@ -75,7 +80,9 @@ class RegistrationCodeTests {
                 .andExpect(jsonPath("$.message").value("验证码已发送"))
                 .andExpect(jsonPath("$.expiresInSeconds").value(300))
                 .andExpect(jsonPath("$.resendAfterSeconds").value(60))
-                .andExpect(jsonPath("$.length()").value(3));
+                .andExpect(jsonPath("$.status").value("SENT"))
+                .andExpect(jsonPath("$.deliveryId").isString())
+                .andExpect(jsonPath("$.length()").value(5));
 
         ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
         verify(mailService).sendVerificationCode(eq(EMAIL), code.capture());
@@ -153,27 +160,102 @@ class RegistrationCodeTests {
     }
 
     @Test
-    void rollsBackNewRecordWhenMailFails() throws Exception {
+    void keepsCommittedCodeAndRetriesSameEncryptedPayloadWhenMailFails() throws Exception {
         doThrow(new MailSendException("test mail failure"))
                 .when(mailService).sendVerificationCode(anyString(), anyString());
-        send(EMAIL).andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.message").value("邮件发送失败，请稍后重试"));
-        assertEquals(0, jdbc.queryForObject(
+        String result = send(EMAIL).andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("PENDING")).andReturn().getResponse().getContentAsString();
+        String id = json.readTree(result).get("deliveryId").asText();
+        assertEquals(1, jdbc.queryForObject(
                 "SELECT COUNT(*) FROM registration_email_code", Integer.class));
+        String hash = storedHash();
+        String encrypted = jdbc.queryForObject("SELECT code_cipher FROM app_mail_delivery WHERE id=?", String.class, id);
+        assertNotNull(encrypted);
+        doNothing().when(mailService).sendVerificationCode(anyString(), anyString());
+        when(clock.instant()).thenReturn(NOW.plusSeconds(15));
+        deliveries.processDue();
+        ArgumentCaptor<String> codes = ArgumentCaptor.forClass(String.class);
+        verify(mailService, times(2)).sendVerificationCode(eq(EMAIL), codes.capture());
+        assertEquals(codes.getAllValues().get(0), codes.getAllValues().get(1));
+        assertNotEquals(codes.getValue(), encrypted);
+        assertEquals(hash, storedHash());
+        assertTrue(hasher.matches(codes.getValue(), hash));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/auth/registration-codes/{id}", id))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("SENT"))
+                .andExpect(jsonPath("$.code").doesNotExist()).andExpect(jsonPath("$.email").doesNotExist());
+        assertNull(jdbc.queryForObject("SELECT code_cipher FROM app_mail_delivery WHERE id=?", String.class, id));
     }
 
     @Test
-    void preservesPreviousCodeWhenResendFails() throws Exception {
+    void failedResendKeepsNewCodeUsableAndStillEnforcesCooldown() throws Exception {
         send(EMAIL).andExpect(status().isOk());
         String firstHash = storedHash();
         when(clock.instant()).thenReturn(NOW.plusSeconds(60));
         doThrow(new MailSendException("test mail failure"))
                 .when(mailService).sendVerificationCode(anyString(), anyString());
 
-        send(EMAIL).andExpect(status().isBadGateway());
-        assertEquals(firstHash, storedHash());
-        assertEquals(LocalDateTime.of(2026, 10, 21, 16, 0), jdbc.queryForObject(
+        send(EMAIL).andExpect(status().isAccepted());
+        assertNotEquals(firstHash, storedHash());
+        assertEquals(LocalDateTime.of(2026, 10, 21, 16, 1), jdbc.queryForObject(
                 "SELECT last_sent_at FROM registration_email_code", LocalDateTime.class));
+        send(EMAIL).andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void mailIsSentAfterCodeCommitAndWithoutHoldingDatabaseTransaction() throws Exception {
+        doAnswer(invocation -> {
+            assertFalse(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive());
+            String hash = java.util.concurrent.CompletableFuture.supplyAsync(this::storedHash).get(3, TimeUnit.SECONDS);
+            assertTrue(hasher.matches(invocation.getArgument(1), hash));
+            return null;
+        }).when(mailService).sendVerificationCode(anyString(), anyString());
+        var outer = new org.springframework.transaction.support.TransactionTemplate(manager);
+        outer.executeWithoutResult(status -> {
+            assertEquals("SENT", service.send(EMAIL).status());
+            status.setRollbackOnly();
+        });
+        assertNotNull(storedHash());
+    }
+
+    @Test
+    void expiredWorkerLeaseRecoversAndRetriesAreBounded() throws Exception {
+        doThrow(new MailSendException("unavailable")).when(mailService).sendVerificationCode(anyString(), anyString());
+        send(EMAIL).andExpect(status().isAccepted());
+        jdbc.update("UPDATE app_mail_delivery SET status='SENDING',lease_until=?,lease_token='crashed-worker'",
+                LocalDateTime.ofInstant(NOW, ZoneId.of("Asia/Shanghai")));
+        deliveries.processDue();
+        assertEquals(2, jdbc.queryForObject("SELECT attempts FROM app_mail_delivery", Integer.class));
+        when(clock.instant()).thenReturn(NOW.plusSeconds(30));
+        deliveries.processDue();
+        assertEquals("FAILED", jdbc.queryForObject("SELECT status FROM app_mail_delivery", String.class));
+        assertNull(jdbc.queryForObject("SELECT code_cipher FROM app_mail_delivery", String.class));
+        deliveries.processDue();
+        verify(mailService, times(3)).sendVerificationCode(eq(EMAIL), anyString());
+    }
+
+    @Test
+    void expiredJobsNeverSendAnOldCode() throws Exception {
+        doThrow(new MailSendException("unavailable")).when(mailService).sendVerificationCode(anyString(), anyString());
+        send(EMAIL).andExpect(status().isAccepted());
+        when(clock.instant()).thenReturn(NOW.plusSeconds(301));
+        deliveries.processDue();
+        assertEquals("EXPIRED", jdbc.queryForObject("SELECT status FROM app_mail_delivery", String.class));
+        assertNull(jdbc.queryForObject("SELECT code_cipher FROM app_mail_delivery", String.class));
+        verify(mailService, times(1)).sendVerificationCode(eq(EMAIL), anyString());
+    }
+
+    @Test
+    void resendingCancelsPendingJobAndConsumedCodeIsNeverRetried() throws Exception {
+        doThrow(new MailSendException("unavailable")).when(mailService).sendVerificationCode(anyString(), anyString());
+        send(EMAIL).andExpect(status().isAccepted());
+        when(clock.instant()).thenReturn(NOW.plusSeconds(60));
+        send(EMAIL).andExpect(status().isAccepted());
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM app_mail_delivery WHERE status='CANCELLED'", Integer.class));
+        jdbc.update("UPDATE registration_email_code SET consumed_at=last_sent_at");
+        when(clock.instant()).thenReturn(NOW.plusSeconds(90));
+        deliveries.processDue();
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM app_mail_delivery WHERE status='CANCELLED'", Integer.class));
+        verify(mailService, times(2)).sendVerificationCode(eq(EMAIL), anyString());
     }
 
     @Test

@@ -36,6 +36,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties = {
+        "app.jobs.enabled=false", "app.abuse.enabled=false", "app.mail.key-file=target/test-mail-code.key",
         "spring.mail.username=test@example.com",
         "spring.mail.test-connection=false",
         "spring.datasource.url=jdbc:h2:mem:acceptance_flow;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE",
@@ -44,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.password="
 })
 @AutoConfigureMockMvc
-@Sql("/sql/acceptance-flow-schema.sql")
+@Sql({"/sql/acceptance-flow-schema.sql", "/sql/runtime-schema.sql"})
 class AcceptanceFlowTests {
 
     private static final String PASSWORD = "Acceptance123!";

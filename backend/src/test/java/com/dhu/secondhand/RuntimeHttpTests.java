@@ -24,11 +24,12 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT, properties={
+        "app.jobs.enabled=false", "app.abuse.enabled=false", "app.mail.key-file=target/test-mail-code.key",
         "spring.mail.username=test@example.com", "spring.mail.test-connection=false",
         "spring.datasource.url=jdbc:h2:mem:runtime_http;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa", "spring.datasource.password="})
-@Sql("/sql/acceptance-flow-schema.sql")
+@Sql({"/sql/acceptance-flow-schema.sql", "/sql/runtime-schema.sql"})
 class RuntimeHttpTests {
     @LocalServerPort private int port;
     @Autowired private ObjectMapper json;

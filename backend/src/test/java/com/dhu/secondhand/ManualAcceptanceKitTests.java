@@ -34,7 +34,8 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"spring.mail.username=test@example.com", "spring.mail.test-connection=false"})
+        properties = {
+        "app.jobs.enabled=false", "app.abuse.enabled=false", "app.mail.key-file=target/test-mail-code.key","spring.mail.username=test@example.com", "spring.mail.test-connection=false"})
 @ActiveProfiles("local")
 @ContextConfiguration(initializers = ManualAcceptanceKitTests.DatabaseInitializer.class)
 @EnabledIfSystemProperty(named = "acceptance.kit.test.enabled", matches = "true")

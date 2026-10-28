@@ -16,7 +16,7 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.context.transaction.AfterTransaction;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.verify;
 
 @SpringBootTest(properties = {
+        "app.jobs.enabled=false", "app.abuse.enabled=false", "app.mail.key-file=target/test-mail-code.key",
         "spring.mail.username=test@example.com",
         "spring.mail.test-connection=false"
 })
@@ -96,7 +97,6 @@ class ManualDatabaseConnectionTests {
     }
 
     @Test
-    @Transactional
     void storesRegistrationCodeAndEnforcesCooldownInMysql() {
         assertEquals("dhu_secondhand", jdbcTemplate.queryForObject(
                 "SELECT DATABASE()", String.class));
@@ -118,9 +118,11 @@ class ManualDatabaseConnectionTests {
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, exception.getStatus());
     }
 
-    @AfterTransaction
-    void verifiesRegistrationTestRecordWasRolledBack() {
+    @AfterEach
+    void removesOnlyThisTestsCommittedMailAndCodeRecords() {
         if (registrationTestEmail != null) {
+            jdbcTemplate.update("DELETE FROM app_mail_delivery WHERE email=?", registrationTestEmail);
+            jdbcTemplate.update("DELETE FROM registration_email_code WHERE email=?", registrationTestEmail);
             assertEquals(0, jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM registration_email_code WHERE email=?",
                     Integer.class, registrationTestEmail));

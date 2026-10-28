@@ -34,7 +34,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"spring.mail.username=test@example.com", "spring.mail.test-connection=false"})
+        properties = {
+        "app.jobs.enabled=false", "app.abuse.enabled=false", "app.mail.key-file=target/test-mail-code.key","spring.mail.username=test@example.com", "spring.mail.test-connection=false"})
 @ActiveProfiles("local")
 @EnabledIfSystemProperty(named = "db.test.enabled", matches = "true")
 class ManualAcceptanceFlowTests {

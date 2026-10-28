@@ -7,9 +7,12 @@ import com.dhu.secondhand.identity.dto.SendRegistrationCodeResponse;
 import com.dhu.secondhand.identity.exception.RegistrationCodeException;
 import com.dhu.secondhand.identity.mapper.RegistrationEmailCodeMapper;
 import org.springframework.http.HttpStatus;
-import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -17,6 +20,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class RegistrationCodeService {
@@ -27,50 +31,65 @@ public class RegistrationCodeService {
 
     private final RegistrationEmailCodeMapper codeMapper;
     private final UserMapper userMapper;
-    private final MailService mailService;
+    private final MailDeliveryService deliveries;
+    private final MailCodeCipher cipher;
+    private final TransactionTemplate tx;
+    private final JdbcTemplate jdbc;
     private final VerificationCodeHasher hasher;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
     public RegistrationCodeService(RegistrationEmailCodeMapper codeMapper, UserMapper userMapper,
-                                   MailService mailService, VerificationCodeHasher hasher, Clock clock) {
+                                   MailDeliveryService deliveries, MailCodeCipher cipher,
+                                   PlatformTransactionManager manager, JdbcTemplate jdbc,
+                                   VerificationCodeHasher hasher, Clock clock) {
         this.codeMapper = codeMapper;
         this.userMapper = userMapper;
-        this.mailService = mailService;
+        this.deliveries = deliveries;
+        this.cipher = cipher;
+        this.tx = new TransactionTemplate(manager);
+        this.jdbc = jdbc;
         this.hasher = hasher;
         this.clock = clock;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SendRegistrationCodeResponse send(String rawEmail) {
         String email = normalizeCampusEmail(rawEmail);
         if (userMapper.selectCount(Wrappers.<User>lambdaQuery().eq(User::getEmail, email)) > 0) {
             throw new RegistrationCodeException(HttpStatus.CONFLICT, "该邮箱已注册");
         }
 
-        // 唯一索引和 upsert 取得同一邮箱记录的排他锁，直到事务结束。
-        codeMapper.ensureExists(email, LocalDateTime.now(clock).withNano(0));
-        LocalDateTime lastSentAt = codeMapper.lockLastSentAt(email);
-        LocalDateTime now = LocalDateTime.now(clock).withNano(0);
-        if (lastSentAt != null && now.isBefore(lastSentAt.plusSeconds(COOLDOWN_SECONDS))) {
-            long remaining = Duration.between(now, lastSentAt.plusSeconds(COOLDOWN_SECONDS)).getSeconds();
-            throw new RegistrationCodeException(HttpStatus.TOO_MANY_REQUESTS,
-                    "发送过于频繁，请稍后重试", remaining);
-        }
-
+        String id = UUID.randomUUID().toString().replace("-", "");
         String code = String.format(Locale.ROOT, "%06d", random.nextInt(1_000_000));
-        int updated = codeMapper.replaceCode(email, hasher.hash(code), now.plusSeconds(TTL_SECONDS), now);
-        if (updated != 1) {
-            throw new IllegalStateException("验证码记录更新失败");
-        }
+        String hash = hasher.hash(code);
+        String encrypted = cipher.encrypt(code, id);
+        tx.executeWithoutResult(transaction -> {
+            // 短事务同时提交验证码与投递任务，不在持锁期间等待 SMTP。
+            codeMapper.ensureExists(email, LocalDateTime.now(clock).withNano(0));
+            LocalDateTime lastSentAt = codeMapper.lockLastSentAt(email);
+            LocalDateTime now = LocalDateTime.now(clock).withNano(0);
+            if (lastSentAt != null && now.isBefore(lastSentAt.plusSeconds(COOLDOWN_SECONDS))) {
+                long remaining = Duration.between(now, lastSentAt.plusSeconds(COOLDOWN_SECONDS)).getSeconds();
+                throw new RegistrationCodeException(HttpStatus.TOO_MANY_REQUESTS,
+                        "发送过于频繁，请稍后重试", remaining);
+            }
 
-        try {
-            mailService.sendVerificationCode(email, code);
-        } catch (MailException exception) {
-            // 抛出运行时异常，回滚本次验证码及发送时间的修改。
-            throw new RegistrationCodeException(HttpStatus.BAD_GATEWAY, "邮件发送失败，请稍后重试");
-        }
-        return new SendRegistrationCodeResponse("验证码已发送", TTL_SECONDS, COOLDOWN_SECONDS);
+            int updated = codeMapper.replaceCode(email, hash, now.plusSeconds(TTL_SECONDS), now);
+            if (updated != 1) {
+                throw new IllegalStateException("验证码记录更新失败");
+            }
+
+            jdbc.update("""
+                    UPDATE app_mail_delivery SET status='CANCELLED',code_cipher=NULL
+                    WHERE email=? AND status IN ('PENDING','SENDING')
+                    """, email);
+            jdbc.update("""
+                    INSERT INTO app_mail_delivery(id,email,code_hash,code_cipher,status,attempts,next_attempt_at,expires_at,created_at)
+                    VALUES(?,?,?,?,'PENDING',0,?,?,?)
+                    """, id, email, hash, encrypted, now, now.plusSeconds(TTL_SECONDS), now);
+        });
+        return deliveries.attempt(id);
     }
 
     private String normalizeCampusEmail(String rawEmail) {

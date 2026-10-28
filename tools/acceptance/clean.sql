@@ -27,6 +27,16 @@ BEGIN
     DELETE FROM community_review;
     DELETE FROM community_favorite;
     DELETE FROM community_wanted;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='app_mail_delivery') THEN
+        DELETE FROM app_mail_delivery;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='app_goods_image') THEN
+        DELETE FROM app_goods_image;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='app_uploaded_image') THEN
+        -- 文件仍按后台宽限期清理，重置不直接删除磁盘文件。
+        UPDATE app_uploaded_image SET unused_since=CURRENT_TIMESTAMP;
+    END IF;
     DELETE FROM market_trade;
     DELETE FROM market_goods;
     DELETE FROM registration_email_code;

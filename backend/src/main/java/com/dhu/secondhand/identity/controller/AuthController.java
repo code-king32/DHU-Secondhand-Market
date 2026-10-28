@@ -3,6 +3,7 @@ package com.dhu.secondhand.identity.controller;
 import com.dhu.secondhand.account.dto.UserView;
 import com.dhu.secondhand.account.mapper.UserMapper;
 import com.dhu.secondhand.common.SessionAuth;
+import com.dhu.secondhand.common.AbuseProtection;
 import com.dhu.secondhand.identity.dto.LoginRequest;
 import com.dhu.secondhand.identity.dto.RegisterRequest;
 import com.dhu.secondhand.identity.service.AccountAuthService;
@@ -18,9 +19,10 @@ public class AuthController {
     private final AccountAuthService service;
     private final SessionAuth auth;
     private final UserMapper users;
+    private final AbuseProtection protection;
 
-    public AuthController(AccountAuthService service, SessionAuth auth, UserMapper users) {
-        this.service = service; this.auth = auth; this.users = users;
+    public AuthController(AccountAuthService service, SessionAuth auth, UserMapper users, AbuseProtection protection) {
+        this.service = service; this.auth = auth; this.users = users; this.protection = protection;
     }
 
     @PostMapping("/register")
@@ -29,8 +31,12 @@ public class AuthController {
 
     @PostMapping("/login")
     public UserView login(@Valid @RequestBody LoginRequest body, HttpServletRequest request) {
+        // 默认只信任 TCP 对端地址，不接受客户端自报的 X-Forwarded-For。
+        protection.beforeLogin(request.getRemoteAddr(), body.email());
         UserView user = service.login(body);
-        return service.openSession(user.id(), request);
+        UserView result = service.openSession(user.id(), request);
+        protection.loginSucceeded(body.email());
+        return result;
     }
 
     @PostMapping("/logout")

@@ -22,6 +22,12 @@ export interface GoodsWrite {
   imageUrls: string[]
 }
 
+export function uploadGoodsImage(file: File) {
+  const data = new FormData()
+  data.append('file', file)
+  return http.post('/images', data, { timeout: 60000 }) as Promise<{ url: string }>
+}
+
 export function listGoods(params: { keyword?: string; category?: string; page?: number; size?: number }) {
   return http.get('/goods', { params }) as Promise<Page<Goods>>
 }

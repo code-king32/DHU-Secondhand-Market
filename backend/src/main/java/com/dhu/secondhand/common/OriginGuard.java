@@ -45,8 +45,13 @@ public class OriginGuard extends OncePerRequestFilter {
         if (!denied && contentType != null) {
             try {
                 MediaType parsed = MediaType.parseMediaType(contentType);
-                denied = !"application".equalsIgnoreCase(parsed.getType())
-                        || !"json".equalsIgnoreCase(parsed.getSubtype());
+                boolean json = "application".equalsIgnoreCase(parsed.getType())
+                        && "json".equalsIgnoreCase(parsed.getSubtype());
+                boolean imageUpload = "POST".equals(request.getMethod())
+                        && (request.getContextPath() + "/api/images").equals(request.getRequestURI())
+                        && "multipart".equalsIgnoreCase(parsed.getType())
+                        && "form-data".equalsIgnoreCase(parsed.getSubtype());
+                denied = !json && !imageUpload;
             } catch (IllegalArgumentException exception) {
                 denied = true;
             }
