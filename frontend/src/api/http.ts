@@ -6,6 +6,7 @@ import { ElMessage } from 'element-plus'
 declare module 'axios' {
   export interface AxiosRequestConfig {
     silent?: boolean
+    timeoutMessage?: string
   }
 }
 
@@ -19,7 +20,10 @@ http.interceptors.response.use(
   (response) => response.data, // 成功时直接返回 data，省去每页写 .data
   (error: AxiosError<{ message?: string }>) => {
     if (!error.config?.silent) {
-      ElMessage.error(error.response?.data?.message || '网络错误，请稍后重试')
+      const timedOut = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT'
+      ElMessage.error(error.response?.data?.message || (timedOut
+        ? error.config?.timeoutMessage || '请求超时，请稍后重试'
+        : error.response ? '服务暂时不可用，请稍后重试' : '无法连接服务器，请检查网络或后端服务'))
     }
     return Promise.reject(error)
   },

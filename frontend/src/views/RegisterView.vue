@@ -1,14 +1,45 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onUnmounted, reactive, ref } from 'vue'
+import { isAxiosError } from 'axios'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { sendRegistrationCode, register } from '@/api/auth'
+import { sendRegistrationCode, getRegistrationCodeStatus, register } from '@/api/auth'
 
 const router = useRouter()
 const form = reactive({ email: '', code: '', password: '', nickname: '' })
 const loading = ref(false)
 const sending = ref(false)
 const countdown = ref(0)
+const deliveryMessage = ref('')
+let timer: ReturnType<typeof setInterval> | undefined
+let pollTimer: ReturnType<typeof setTimeout> | undefined
+let activeDelivery = ''
+onUnmounted(() => {
+  clearInterval(timer)
+  clearTimeout(pollTimer)
+  activeDelivery = ''
+})
+
+function pollDelivery(id: string, remaining = 24) {
+  pollTimer = setTimeout(async () => {
+    if (activeDelivery !== id) return
+    try {
+      const result = await getRegistrationCodeStatus(id)
+      if (activeDelivery !== id) return
+      deliveryMessage.value = result.message
+      if (result.status === 'SENT') {
+        ElMessage.success(result.message)
+        return
+      }
+      if (result.status !== 'PENDING' && result.status !== 'SENDING') return
+    } catch {
+      // 查询失败不代表投递失败，继续有限次查询。
+    }
+    if (activeDelivery !== id) return
+    if (remaining > 1) pollDelivery(id, remaining - 1)
+    else deliveryMessage.value = '发送结果暂未确认，请检查邮箱；若已收到验证码，可直接填写'
+  }, 5000)
+}
 
 async function sendCode() {
   if (!form.email) {
@@ -16,20 +47,39 @@ async function sendCode() {
     return
   }
   sending.value = true
+  clearTimeout(pollTimer)
+  activeDelivery = ''
+  deliveryMessage.value = '正在提交发送请求，请稍候'
   try {
     const res = await sendRegistrationCode(form.email)
-    ElMessage.success(res.message || '验证码已发送')
+    deliveryMessage.value = res.message
+    if (!res.status || res.status === 'SENT') ElMessage.success(res.message || '验证码已发送')
+    else if (res.status === 'PENDING' || res.status === 'SENDING') {
+      ElMessage.info(res.message)
+      activeDelivery = res.deliveryId
+      pollDelivery(res.deliveryId)
+    }
     startCountdown(res.resendAfterSeconds || 60)
-  } catch {
-    // 拦截器已提示
+  } catch (error) {
+    // 超时不代表发信失败，留出收信时间，避免立即重复发送。
+    if (isAxiosError(error) && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT')) {
+      startCountdown(60)
+      deliveryMessage.value = '发送结果暂未确认，请检查邮箱；若已收到验证码，可直接填写'
+    } else if (isAxiosError(error)) {
+      deliveryMessage.value = error.response?.data?.message || '发送请求未完成，请稍后重试'
+      const retry = Number(error.response?.headers['retry-after'])
+      if (retry > 0) startCountdown(retry)
+      else if (error.response?.status === 502) startCountdown(60)
+    }
   } finally {
     sending.value = false
   }
 }
 
 function startCountdown(seconds: number) {
+  clearInterval(timer)
   countdown.value = seconds
-  const timer = setInterval(() => {
+  timer = setInterval(() => {
     countdown.value -= 1
     if (countdown.value <= 0) clearInterval(timer)
   }, 1000)
@@ -73,6 +123,7 @@ async function submit() {
             </el-button>
           </div>
         </el-form-item>
+        <p v-if="deliveryMessage" class="delivery-message" role="status">{{ deliveryMessage }}</p>
         <el-form-item label="密码">
           <el-input v-model="form.password" type="password" show-password placeholder="至少 8 位" />
         </el-form-item>
@@ -100,4 +151,5 @@ async function submit() {
   gap: 8px;
   width: 100%;
 }
+.delivery-message { margin: -6px 0 18px 90px; color: #606266; font-size: 12px; line-height: 1.5; }
 </style>

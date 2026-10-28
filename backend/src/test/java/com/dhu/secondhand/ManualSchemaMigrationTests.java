@@ -20,7 +20,8 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest(properties={"spring.mail.username=test@example.com", "spring.mail.test-connection=false"})
+@SpringBootTest(properties={
+        "app.jobs.enabled=false", "app.abuse.enabled=false", "app.mail.key-file=target/test-mail-code.key","spring.mail.username=test@example.com", "spring.mail.test-connection=false"})
 @ActiveProfiles("local")
 @EnabledIfSystemProperty(named="schema.update.enabled", matches="true")
 class ManualSchemaMigrationTests {

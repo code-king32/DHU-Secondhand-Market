@@ -2,7 +2,7 @@
 
 DHU 校园二手交易平台，三人团队课程项目。支持校园邮箱认证、商品发布与检索、线下交易、信誉评价及举报申诉。
 
-当前仓库以后端 REST API 为主，核心业务已有实现和自动化测试；前端工程尚未纳入本仓库，前后端联调与部署验收待完成。
+仓库包含 Spring Boot 后端与 Vue 3 前端，核心业务已有实现和自动化测试；前端启动步骤见 [frontend/README.md](frontend/README.md)，完整联调与部署仍需验收。
 
 ## 技术栈
 
@@ -15,7 +15,7 @@ DHU 校园二手交易平台，三人团队课程项目。支持校园邮箱认�
 | 邮件 | Spring Boot Mail、SMTP |
 | 测试 | JUnit 5、Spring Boot Test、MockMvc、H2 |
 | 构建 | Maven |
-| 前端规划 | Vue 3 + TypeScript + Vite，独立开发 |
+| 前端 | Vue 3 + TypeScript + Vite |
 
 ## 功能模块
 
@@ -25,7 +25,7 @@ DHU 校园二手交易平台，三人团队课程项目。支持校园邮箱认�
 - **信誉与治理**：交易互评、信誉摘要、举报、申诉、管理员处理、账号禁用/恢复、商品隐藏及审计。
 - **扩展功能**：收藏、求购、教材分类筛选。
 
-商品图片目前保存 HTTP/HTTPS 地址，尚未提供文件上传。交易在线下完成，当前不涉及在线支付、物流或实时聊天。
+商品图片支持直接上传 JPG、PNG（每张最多 5 MB，每件商品最多 9 张），原有 HTTP/HTTPS 图片地址仍兼容。图片保存在后端工作目录的 `uploads/images/`，可通过 `app.images.directory` 修改；部署或迁移时需同时保留数据库和该目录。交易在线下完成，当前不涉及在线支付、物流或实时聊天。
 
 ## 三人分工
 
@@ -108,6 +108,10 @@ spring.mail.properties.mail.smtp.writetimeout=5000
 
 使用环境变量时，在启动进程的环境中设置 `DB_USERNAME`、`DB_PASSWORD`、`MAIL_USERNAME`、`MAIL_PASSWORD`。QQ 邮箱的邮件密码填写 SMTP 授权码。使用其他发件服务时，按其要求调整 SMTP 主机、端口和加密方式。
 
+启动时会幂等创建邮件投递、图片归属和商品图片引用三张辅助表（脚本为 `backend/src/main/resources/sql/runtime-schema.sql`），仅新增表，不修改既有业务表和数据。数据库账号需要建表权限；若由管理员预先执行该脚本，可配置 `spring.sql.init.mode=never`。
+
+发信任务会持久化并有限重试，待发验证码用本地 `uploads/mail-code.key` 加密；该密钥由首次发信自动生成，保存在 Git 忽略目录中，迁移和恢复时应与数据库一起保留。图片默认每人100张、共100 MB，未被商品引用且闲置24小时后自动清理。默认限额和任务参数在 `application.properties`，可在本地配置中覆盖；详见[身份接口](docs/02-身份认证接口.md)和[商品接口](docs/04-商品交易接口.md)。
+
 ### 3. 启动后端
 
 在仓库根目录执行：
@@ -143,7 +147,13 @@ mvn test
 mvn "-Dtest=ManualDatabaseConnectionTests,ManualMarketplaceTests,ManualAcceptanceFlowTests" "-Ddb.test.enabled=true" test
 ```
 
-上述测试使用邮件替身。数据库连接测试的写入会回滚；商品并发与接口闭环测试会创建独立随机数据，结束时按本次记录精确清理。接口闭环启动真实 HTTP 端口，为每个用户保持独立 Cookie，验证 MySQL 下跨请求提交的注册登录、交易、评价、治理和注销；浏览器页面及实际收件仍需单独验收。
+上述测试使用邮件替身。数据库连接测试中的用户写入会回滚；验证码、商品并发与接口闭环测试会创建独立随机数据，结束时按本次记录精确清理。接口闭环启动真实 HTTP 端口，为每个用户保持独立 Cookie，验证 MySQL 下跨请求提交的注册登录、交易、评价、治理和注销；浏览器页面及实际收件仍需单独验收。
+
+新增的真实 MySQL 可靠性检查会创建并删除一个随机临时库，邮件使用替身，不改动开发库或验收库中的业务数据（账号需有建库权限）：
+
+```powershell
+mvn "-Dtest=ManualReliabilityMySqlTests" "-Dreliability.mysql.enabled=true" test
+```
 
 真实邮件测试需额外在本地配置 `app.mail.test-recipient`，再执行：
 

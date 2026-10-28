@@ -22,10 +22,20 @@ export interface SendCodeResponse {
   message: string
   expiresInSeconds: number
   resendAfterSeconds: number
+  deliveryId: string
+  status: 'PENDING' | 'SENDING' | 'SENT' | 'FAILED' | 'EXPIRED' | 'CANCELLED'
+}
+
+export function getRegistrationCodeStatus(id: string) {
+  return http.get(`/auth/registration-codes/${id}`, { silent: true }) as Promise<SendCodeResponse>
 }
 
 export function sendRegistrationCode(email: string) {
-  return http.post('/auth/registration-codes', { email }) as Promise<SendCodeResponse>
+  // SMTP 发信可能超过普通接口的 10 秒等待时间。
+  return http.post('/auth/registration-codes', { email }, {
+    timeout: 60000,
+    timeoutMessage: '发送结果暂未确认，请检查邮箱；若已收到验证码，可直接填写，暂勿重复发送',
+  }) as Promise<SendCodeResponse>
 }
 
 export function register(data: { email: string; code: string; password: string; nickname: string }) {

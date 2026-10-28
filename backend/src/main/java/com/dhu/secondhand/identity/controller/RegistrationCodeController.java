@@ -3,6 +3,12 @@ package com.dhu.secondhand.identity.controller;
 import com.dhu.secondhand.identity.dto.SendRegistrationCodeRequest;
 import com.dhu.secondhand.identity.dto.SendRegistrationCodeResponse;
 import com.dhu.secondhand.identity.service.RegistrationCodeService;
+import com.dhu.secondhand.identity.service.MailDeliveryService;
+import com.dhu.secondhand.common.AbuseProtection;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -14,13 +20,26 @@ import org.springframework.web.bind.annotation.RestController;
 public class RegistrationCodeController {
 
     private final RegistrationCodeService service;
+    private final MailDeliveryService deliveries;
+    private final AbuseProtection protection;
 
-    public RegistrationCodeController(RegistrationCodeService service) {
+    public RegistrationCodeController(RegistrationCodeService service, MailDeliveryService deliveries, AbuseProtection protection) {
         this.service = service;
+        this.deliveries = deliveries;
+        this.protection = protection;
     }
 
     @PostMapping("/registration-codes")
-    public SendRegistrationCodeResponse send(@Valid @RequestBody SendRegistrationCodeRequest request) {
-        return service.send(request.email());
+    public ResponseEntity<SendRegistrationCodeResponse> send(@Valid @RequestBody SendRegistrationCodeRequest body,
+                                                            HttpServletRequest request) {
+        protection.beforeMail(request.getRemoteAddr(), body.email());
+        var response = service.send(body.email());
+        int status = switch (response.status()) { case "SENT" -> 200; case "FAILED" -> 502; default -> 202; };
+        return ResponseEntity.status(status).body(response);
+    }
+
+    @GetMapping("/registration-codes/{id}")
+    public SendRegistrationCodeResponse status(@PathVariable String id) {
+        return deliveries.status(id);
     }
 }
