@@ -96,6 +96,7 @@ frontend/
 | 命令 | 作用 |
 |------|------|
 | `npm run dev` | 启动开发服务器（热更新） |
+| `npm test` | 会话失效、路由权限和举报处置回归测试（模拟 HTTP 响应，无需后端） |
 | `npm run build` | 类型检查 + 生产构建（`vue-tsc -b && vite build`） |
 | `npm run preview` | 本地预览构建产物 |
 

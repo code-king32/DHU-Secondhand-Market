@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -27,16 +26,6 @@ const router = createRouter({
       ],
     },
   ],
-})
-
-router.beforeEach(async (to) => {
-  const auth = useAuthStore()
-  // 需要登录的页面：先静默恢复会话，失败则跳登录
-  if (to.meta.requiresAuth && !auth.user) {
-    const user = await auth.fetchMe()
-    if (!user) return { path: '/login', query: { redirect: to.fullPath } }
-  }
-  if (to.meta.requiresAdmin && auth.user?.role !== 'ADMIN') return '/'
 })
 
 export default router

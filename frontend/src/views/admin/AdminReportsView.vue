@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   listAdminReports,
@@ -26,6 +26,10 @@ const resolveVisible = ref(false)
 const current = ref<Report | null>(null)
 const resolving = ref(false)
 const form = reactive({ decision: 'RESOLVED', note: '', action: 'NONE' })
+
+watch(() => form.decision, (decision) => {
+  if (decision !== 'RESOLVED') form.action = 'NONE'
+})
 
 const auditVisible = ref(false)
 const audits = ref<Audit[]>([])
@@ -85,7 +89,7 @@ async function submitResolve() {
     await resolveReport(current.value.id, {
       decision: form.decision,
       note: form.note.trim(),
-      action: form.action,
+      action: form.decision === 'RESOLVED' ? form.action : 'NONE',
     })
     ElMessage.success('已处理')
     resolveVisible.value = false
