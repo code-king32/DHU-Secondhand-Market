@@ -7,7 +7,7 @@ const environment = JSON.parse(await readFile(new URL('./DHU-Acceptance.postman_
 const values = new Map(environment.values.filter(v => v.enabled !== false).map(v => [v.key, v.value]));
 const args = process.argv.slice(2);
 if (args.length) {
-  if (args.length !== 2 || args[0] !== '--base-url') throw new Error('Usage: node run-collection.mjs [--base-url http://localhost:8081]');
+  if (args.length !== 2 || args[0] !== '--base-url') throw new Error('Usage: node run-collection.mjs [--base-url http://localhost:8080]');
   values.set('baseUrl', args[1]);
 }
 const base = new URL(values.get('baseUrl'));

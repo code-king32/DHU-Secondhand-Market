@@ -209,6 +209,29 @@ class MarketplaceTests {
     }
 
     @Test
+    void publicGoodsHideInactiveSellersAndReappearAfterRestoration() throws Exception {
+        long hidden = createGoods(1, "教材", "TEXTBOOK", "20.00");
+        long visible = createGoods(2, "教材", "TEXTBOOK", "30.00");
+        for (int state : new int[]{1, 2}) {
+            jdbc.update("UPDATE app_user SET status=? WHERE id=1", state);
+            mvc.perform(get("/api/goods").param("keyword", "教材").param("category", "TEXTBOOK"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1))
+                    .andExpect(jsonPath("$.items.length()").value(1))
+                    .andExpect(jsonPath("$.items[0].id").value(visible));
+            mvc.perform(get("/api/goods/{id}", hidden)).andExpect(status().isNotFound());
+        }
+        jdbc.update("UPDATE app_user SET status=0,email_verified=0 WHERE id=1");
+        mvc.perform(get("/api/goods")).andExpect(jsonPath("$.total").value(1));
+        mvc.perform(get("/api/goods/{id}", hidden)).andExpect(status().isNotFound());
+
+        jdbc.update("UPDATE app_user SET email_verified=1 WHERE id=1");
+        mvc.perform(get("/api/goods")).andExpect(jsonPath("$.total").value(2));
+        mvc.perform(get("/api/goods/{id}", hidden)).andExpect(status().isOk());
+        mvc.perform(get("/api/goods/mine").session(session(1)))
+                .andExpect(jsonPath("$.total").value(1));
+    }
+
+    @Test
     void accountClosureRetiresListingsAndPendingApplications() throws Exception {
         long goods = createGoods(1, "教材", "TEXTBOOK", "20.00");
         long trade = apply(2, goods);

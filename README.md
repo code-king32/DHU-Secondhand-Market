@@ -121,7 +121,7 @@ cd backend
 mvn spring-boot:run "-Dspring-boot.run.profiles=local"
 ```
 
-默认地址为 `http://localhost:8080`。当前提供 JSON 接口，没有首页；可以在另一个终端查询商品列表：
+开发和验收后端统一使用 `http://localhost:8080`，前端代理及 Postman 环境均已对齐。切换验收库时先停止原后端，只切换数据库配置。当前提供 JSON 接口，没有首页；可以在另一个终端查询商品列表：
 
 ```powershell
 curl.exe -i "http://localhost:8080/api/goods"

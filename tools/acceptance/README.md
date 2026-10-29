@@ -1,6 +1,6 @@
 # 组长验收包
 
-用于本地后端演示、接口验收和前端联调。固定使用独立库 `dhu_secondhand_acceptance`，建议后端运行于 `http://localhost:8081`。初始化通过 SQL 准备已认证的演示账号，接口仍使用正常的密码登录、Session 和角色校验。
+用于本地后端演示、接口验收和前端联调。固定使用独立库 `dhu_secondhand_acceptance`，后端统一运行于 `http://localhost:8080`。初始化通过 SQL 准备已认证的演示账号，接口仍使用正常的密码登录、Session 和角色校验。
 
 ## 1. 初始化测试库
 
@@ -16,11 +16,11 @@
 
 ## 2. 启动验收后端
 
-先按[项目 README](../../README.md)准备自己的 `application-local.properties`，本地凭据不提交。随后在仓库根目录执行：
+先按[项目 README](../../README.md)准备自己的 `application-local.properties`，本地凭据不提交。开发和验收共用 8080 端口，切换时先停止原后端，只切换数据库，无需修改前端配置。随后在仓库根目录执行：
 
 ```powershell
 cd backend
-mvn spring-boot:run "-Dspring-boot.run.profiles=local" "-Dspring-boot.run.arguments=--spring.datasource.url=jdbc:mysql://localhost:3306/dhu_secondhand_acceptance?serverTimezone=Asia/Shanghai --server.port=8081"
+mvn spring-boot:run "-Dspring-boot.run.profiles=local" "-Dspring-boot.run.arguments=--spring.datasource.url=jdbc:mysql://localhost:3306/dhu_secondhand_acceptance?serverTimezone=Asia/Shanghai"
 ```
 
 连接地址覆盖为验收库，用户名和密码仍来自自己的本地配置。MySQL 主机、端口应与上一步一致。预置账号和请求集合不调用发信接口，不要求实际收件；校园邮箱验证码和真实注册需另按[验收清单](../../docs/06-联调验收清单.md)验证。
@@ -57,8 +57,6 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=local" "-Dspring-boot.run.argume
 
 ```powershell
 node tools/acceptance/run-collection.mjs
-# 自定义本地端口：
-node tools/acceptance/run-collection.mjs --base-url http://localhost:8081
 ```
 
 运行器读取同一集合及环境，执行其中响应断言并维护 Session Cookie；仅支持本集合用到的接口，不是完整 Postman 运行时。当前 HTTP/SQL 自动回归使用此运行器；Postman 导入及其界面操作需组长本机确认。

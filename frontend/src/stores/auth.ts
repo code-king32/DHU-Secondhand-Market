@@ -20,11 +20,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout() {
-    try {
-      await apiLogout()
-    } catch {
-      // 忽略退出错误
-    }
+    await apiLogout()
     user.value = null
   }
 
