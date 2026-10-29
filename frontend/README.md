@@ -1,6 +1,6 @@
 # DHU 校园二手市场 · 前端工程
 
-前端使用 Vue 3 + TypeScript + Vite 构建，配合后端 Spring Boot（日常开发库 8080 / 验收库 8081）通过同源 `/api` 代理联调。
+前端使用 Vue 3 + TypeScript + Vite 构建，配合后端 Spring Boot（统一使用 8080）通过同源 `/api` 代理联调。
 
 ## 一、环境要求
 
@@ -50,14 +50,7 @@ npm install
 
 前端不直接连数据库，也不在代码里写死后端地址，而是统一请求同源 `/api`，由 Vite 转发到后端（避开跨域，并保证登录 Cookie 同源）。
 
-编辑 `vite.config.ts` 里的 `target`：
-
-```ts
-'/api': {
-  target: 'http://localhost:8080', // 日常开发库用 8080；验收库演示账号改成 8081
-  changeOrigin: false,
-},
-```
+后端及前端代理统一使用 `http://localhost:8080`，开发和验收均无需修改端口。使用验收库演示账号时，只按[组长验收包](../tools/acceptance/README.md)切换后端数据库；先停止原后端，再启动验收后端。
 
 ## 五、启动
 

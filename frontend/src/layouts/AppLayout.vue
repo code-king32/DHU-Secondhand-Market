@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
+const loggingOut = ref(false)
 
 onMounted(() => {
   // 公开页面也恢复登录态，保证导航栏显示正确
@@ -13,9 +14,17 @@ onMounted(() => {
 })
 
 async function doLogout() {
-  await auth.logout()
-  ElMessage.success('已退出')
-  router.push('/')
+  if (loggingOut.value) return
+  loggingOut.value = true
+  try {
+    await auth.logout()
+    ElMessage.success('已退出')
+    await router.push('/')
+  } catch {
+    // 请求拦截器已提示；退出失败时保留当前登录状态，允许重试。
+  } finally {
+    loggingOut.value = false
+  }
 }
 </script>
 
@@ -42,7 +51,7 @@ async function doLogout() {
       <div class="right">
         <template v-if="auth.user">
           <span class="nick">{{ auth.user.nickname }}</span>
-          <el-button size="small" @click="doLogout">退出</el-button>
+          <el-button size="small" :loading="loggingOut" @click="doLogout">退出</el-button>
         </template>
         <template v-else>
           <el-button size="small" type="primary" @click="router.push('/login')">登录</el-button>
@@ -51,7 +60,7 @@ async function doLogout() {
       </div>
     </el-header>
     <el-main class="main">
-      <router-view />
+      <router-view :key="$route.path" />
     </el-main>
   </el-container>
 </template>

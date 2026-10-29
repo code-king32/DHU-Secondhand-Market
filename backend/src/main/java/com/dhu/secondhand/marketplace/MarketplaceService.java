@@ -88,7 +88,10 @@ public class MarketplaceService {
 
     public GoodsView detail(long id) {
         GoodsView goods = findGoods(id, false);
-        if (Set.of("OFF_SHELF", "HIDDEN").contains(goods.status())) {
+        if (Set.of("OFF_SHELF", "HIDDEN").contains(goods.status())
+                || !Boolean.TRUE.equals(jdbc.queryForObject(
+                    "SELECT EXISTS(SELECT 1 FROM app_user WHERE id=? AND status=0 AND email_verified=1)",
+                    Boolean.class, goods.sellerId()))) {
             throw error(HttpStatus.NOT_FOUND, "商品不存在或已下架");
         }
         return goods;
@@ -106,6 +109,7 @@ public class MarketplaceService {
         List<Object> args = new ArrayList<>();
         if (sellerId == null) {
             where.append(" AND status='ON_SALE'");
+            where.append(" AND EXISTS(SELECT 1 FROM app_user seller WHERE seller.id=market_goods.seller_id AND seller.status=0 AND seller.email_verified=1)");
         } else {
             where.append(" AND seller_id=?");
             args.add(sellerId);
