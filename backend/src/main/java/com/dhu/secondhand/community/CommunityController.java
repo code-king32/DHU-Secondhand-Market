@@ -72,6 +72,12 @@ public class CommunityController {
         return service.appeal(auth.requireUserId(request), id, body.reason());
     }
 
+    @PutMapping("/admin/reports/{id}/goods-restoration")
+    public CommunityService.GoodsStatusView restoreGoods(@PathVariable long id,
+            @Valid @RequestBody RestorationRequest body, HttpServletRequest request) {
+        return service.restoreGoods(auth.requireAdminId(request), id, body.note());
+    }
+
     @GetMapping("/reports/{id}/appeals")
     public List<CommunityService.AppealView> reportAppeals(@PathVariable long id, HttpServletRequest request) {
         return service.reportAppeals(auth.requireUserId(request), id);
@@ -146,6 +152,7 @@ public class CommunityController {
                                     @NotBlank @Size(max = 1000) String note,
                                     @Pattern(regexp = "NONE|HIDE_GOODS|DISABLE_USER") String action) { }
     public record AppealRequest(@NotBlank @Size(max = 1000) String reason) { }
+    public record RestorationRequest(@NotBlank @Size(max = 1000) String note) { }
     public record AppealResolutionRequest(@NotBlank @Pattern(regexp = "UPHELD|REJECTED") String decision,
                                           @NotBlank @Size(max = 1000) String note) { }
     public record WantedRequest(@NotBlank @Size(max = 100) String title, @NotBlank @Size(max = 2000) String description,

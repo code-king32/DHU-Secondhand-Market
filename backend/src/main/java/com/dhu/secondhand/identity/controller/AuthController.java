@@ -4,6 +4,7 @@ import com.dhu.secondhand.account.dto.UserView;
 import com.dhu.secondhand.account.mapper.UserMapper;
 import com.dhu.secondhand.common.SessionAuth;
 import com.dhu.secondhand.common.AbuseProtection;
+import com.dhu.secondhand.common.ClientIpResolver;
 import com.dhu.secondhand.identity.dto.LoginRequest;
 import com.dhu.secondhand.identity.dto.RegisterRequest;
 import com.dhu.secondhand.identity.service.AccountAuthService;
@@ -20,9 +21,12 @@ public class AuthController {
     private final SessionAuth auth;
     private final UserMapper users;
     private final AbuseProtection protection;
+    private final ClientIpResolver clientIps;
 
-    public AuthController(AccountAuthService service, SessionAuth auth, UserMapper users, AbuseProtection protection) {
+    public AuthController(AccountAuthService service, SessionAuth auth, UserMapper users, AbuseProtection protection,
+                          ClientIpResolver clientIps) {
         this.service = service; this.auth = auth; this.users = users; this.protection = protection;
+        this.clientIps = clientIps;
     }
 
     @PostMapping("/register")
@@ -31,8 +35,7 @@ public class AuthController {
 
     @PostMapping("/login")
     public UserView login(@Valid @RequestBody LoginRequest body, HttpServletRequest request) {
-        // 默认只信任 TCP 对端地址，不接受客户端自报的 X-Forwarded-For。
-        protection.beforeLogin(request.getRemoteAddr(), body.email());
+        protection.beforeLogin(clientIps.resolve(request), body.email());
         UserView user = service.login(body);
         UserView result = service.openSession(user.id(), request);
         protection.loginSucceeded(body.email());

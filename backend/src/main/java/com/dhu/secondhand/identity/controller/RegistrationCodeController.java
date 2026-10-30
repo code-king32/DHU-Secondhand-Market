@@ -5,6 +5,7 @@ import com.dhu.secondhand.identity.dto.SendRegistrationCodeResponse;
 import com.dhu.secondhand.identity.service.RegistrationCodeService;
 import com.dhu.secondhand.identity.service.MailDeliveryService;
 import com.dhu.secondhand.common.AbuseProtection;
+import com.dhu.secondhand.common.ClientIpResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,17 +23,20 @@ public class RegistrationCodeController {
     private final RegistrationCodeService service;
     private final MailDeliveryService deliveries;
     private final AbuseProtection protection;
+    private final ClientIpResolver clientIps;
 
-    public RegistrationCodeController(RegistrationCodeService service, MailDeliveryService deliveries, AbuseProtection protection) {
+    public RegistrationCodeController(RegistrationCodeService service, MailDeliveryService deliveries, AbuseProtection protection,
+                                      ClientIpResolver clientIps) {
         this.service = service;
         this.deliveries = deliveries;
         this.protection = protection;
+        this.clientIps = clientIps;
     }
 
     @PostMapping("/registration-codes")
     public ResponseEntity<SendRegistrationCodeResponse> send(@Valid @RequestBody SendRegistrationCodeRequest body,
                                                             HttpServletRequest request) {
-        protection.beforeMail(request.getRemoteAddr(), body.email());
+        protection.beforeMail(clientIps.resolve(request), body.email());
         var response = service.send(body.email());
         int status = switch (response.status()) { case "SENT" -> 200; case "FAILED" -> 502; default -> 202; };
         return ResponseEntity.status(status).body(response);

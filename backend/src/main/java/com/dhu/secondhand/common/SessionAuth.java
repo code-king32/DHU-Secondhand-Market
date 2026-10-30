@@ -32,17 +32,17 @@ public class SessionAuth {
             userId = session == null ? null : session.getAttribute("userId");
             sessionVersion = session == null ? null : session.getAttribute("sessionVersion");
         } catch (IllegalStateException exception) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "登录状态已失效");
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "SESSION_EXPIRED", "登录状态已失效");
         }
         if (!(userId instanceof Number number)) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "请先登录");
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "AUTH_REQUIRED", "请先登录");
         }
         var rows = jdbc.query("SELECT id, status, email_verified, role, session_version FROM app_user WHERE id=?",
                 (rs, row) -> new Access(rs.getLong("id"), rs.getInt("status"),
                         rs.getInt("email_verified"), rs.getString("role"), rs.getInt("session_version")), number.longValue());
         if (rows.isEmpty()) {
             invalidate(session);
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "登录状态已失效");
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "SESSION_EXPIRED", "登录状态已失效");
         }
         Access access = rows.get(0);
         if (access.status() != 0 || access.verified() != 1) {
@@ -52,7 +52,7 @@ public class SessionAuth {
         int expected = sessionVersion instanceof Number version ? version.intValue() : 0;
         if (access.version() != expected) {
             invalidate(session);
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "登录状态已失效，请重新登录");
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "SESSION_EXPIRED", "登录状态已失效，请重新登录");
         }
         return access;
     }
