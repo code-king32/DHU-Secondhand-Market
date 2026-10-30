@@ -10,7 +10,6 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.net.URI;
 import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,7 +37,8 @@ public class MarketplaceService {
         String description = requiredText(request.description(), 5000, "描述");
         lockAccounts(actor, actor, actor, true);
         String category = category(request.category());
-        String images = images(request.imageUrls());
+        List<String> imageUrls = imageStorage.normalizeUrls(request.imageUrls());
+        String images = images(imageUrls);
         var key = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement("""
@@ -54,7 +54,7 @@ public class MarketplaceService {
             return statement;
         }, key);
         long id = key.getKey().longValue();
-        imageStorage.bind(actor, id, request.imageUrls(), List.of());
+        imageStorage.bind(actor, id, imageUrls, List.of());
         return findGoods(id, false);
     }
 
@@ -66,12 +66,13 @@ public class MarketplaceService {
         GoodsView goods = findGoods(id, true);
         owner(actor, goods.sellerId());
         editable(goods);
-        imageStorage.bind(actor, id, request.imageUrls(), goods.imageUrls());
+        List<String> imageUrls = imageStorage.normalizeUrls(request.imageUrls());
+        imageStorage.bind(actor, id, imageUrls, goods.imageUrls());
         jdbc.update("""
                 UPDATE market_goods SET title=?,description=?,price=?,category=?,image_urls=?,updated_at=CURRENT_TIMESTAMP
                 WHERE id=?
                 """, title, description, request.price(),
-                category(request.category()), images(request.imageUrls()), id);
+                category(request.category()), images(imageUrls), id);
         return findGoods(id, false);
     }
 
@@ -289,18 +290,6 @@ public class MarketplaceService {
 
     private String images(List<String> values) {
         List<String> safe = values == null ? List.of() : List.copyOf(values);
-        for (String value : safe) {
-            if (value.matches("/api/images/[0-9a-f]{32}\\.(jpg|png)")) continue;
-            try {
-                URI uri = URI.create(value);
-                if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
-                        || uri.getHost() == null || uri.getUserInfo() != null || uri.getFragment() != null) {
-                    throw new IllegalArgumentException();
-                }
-            } catch (IllegalArgumentException exception) {
-                throw error(HttpStatus.BAD_REQUEST, "请选择已上传的图片或有效的 HTTP/HTTPS 图片地址");
-            }
-        }
         try { return json.writeValueAsString(safe); }
         catch (Exception exception) { throw new IllegalStateException("图片地址序列化失败", exception); }
     }

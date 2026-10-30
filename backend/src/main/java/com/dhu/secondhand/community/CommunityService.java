@@ -125,6 +125,23 @@ public class CommunityService {
     }
 
     @Transactional
+    public GoodsStatusView restoreGoods(long admin, long reportId, String note) {
+        String reason = text(note, 1000);
+        lockActors(admin, null, true);
+        ReportView report = reportById(reportId, true);
+        if (!"GOODS".equals(report.targetType())) throw bad("恢复商品仅适用于商品举报");
+        var states = jdbc.queryForList("SELECT status FROM market_goods WHERE id=? FOR UPDATE", String.class, report.targetId());
+        if (states.isEmpty()) throw missing("商品不存在");
+        if (!"HIDDEN".equals(states.get(0))) throw conflict("商品当前未被隐藏");
+        // 解除隐藏不自动上架；已有成交记录的商品必须保留已售状态。
+        String restored = count("SELECT COUNT(*) FROM market_trade WHERE goods_id=? AND status='COMPLETED'",
+                report.targetId()) > 0 ? "SOLD" : "OFF_SHELF";
+        jdbc.update("UPDATE market_goods SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", restored, report.targetId());
+        audit(admin, reportId, "GOODS_RESTORED", restored + ": " + reason);
+        return new GoodsStatusView(report.targetId(), restored);
+    }
+
+    @Transactional
     public AppealView appeal(long actor, long reportId, String reason) {
         lockActors(actor, null, false);
         ReportView report = reportById(reportId, true);
@@ -409,4 +426,5 @@ public class CommunityService {
     public record WantedView(long id, long userId, String title, String description, BigDecimal maxPrice, String category,
                              String status, LocalDateTime createdAt, LocalDateTime updatedAt) { }
     public record UserStatusView(long userId, int status) { }
+    public record GoodsStatusView(long goodsId, String status) { }
 }

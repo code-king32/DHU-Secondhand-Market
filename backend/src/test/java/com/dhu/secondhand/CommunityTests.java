@@ -263,6 +263,56 @@ class CommunityTests {
                 .andExpect(jsonPath("$.total").value(0)).andExpect(jsonPath("$.items.length()").value(0));
     }
 
+    @Test
+    void onlyAdminsCanRestoreHiddenGoodsWithAnAuditedReason() throws Exception {
+        long report = reportGoods(10);
+        bodyPut("/api/admin/reports/" + report + "/resolution", 4,
+                Map.of("decision", "RESOLVED", "note", "先行隐藏", "action", "HIDE_GOODS"))
+                .andExpect(status().isOk());
+        String url = "/api/admin/reports/" + report + "/goods-restoration";
+        mvc.perform(put(url).contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"重新核查\"}"))
+                .andExpect(status().isUnauthorized());
+        bodyPut(url, 1, Map.of("note", "自行恢复")).andExpect(status().isForbidden());
+        bodyPut(url, 4, Map.of("note", "")).andExpect(status().isBadRequest());
+        bodyPut(url, 4, Map.of("note", "\u200b")).andExpect(status().isBadRequest());
+        assertEquals("HIDDEN", jdbc.queryForObject("SELECT status FROM market_goods WHERE id=10", String.class));
+        bodyPut(url, 4, Map.of("note", "已重新核查，解除隐藏"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.goodsId").value(10))
+                .andExpect(jsonPath("$.status").value("OFF_SHELF"));
+        assertEquals("OFF_SHELF", jdbc.queryForObject("SELECT status FROM market_goods WHERE id=10", String.class));
+        mvc.perform(get("/api/admin/reports/" + report + "/audit").session(session(4)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[2].action").value("GOODS_RESTORED"))
+                .andExpect(jsonPath("$[2].detail").value("OFF_SHELF: 已重新核查，解除隐藏"));
+        bodyPut(url, 4, Map.of("note", "重复恢复")).andExpect(status().isConflict());
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM community_audit WHERE action='GOODS_RESTORED'", Integer.class));
+    }
+
+    @Test
+    void restoringSoldGoodsNeverMakesThemAvailableForAnotherSale() throws Exception {
+        long report = reportGoods(12);
+        bodyPut("/api/admin/reports/" + report + "/resolution", 4,
+                Map.of("decision", "RESOLVED", "note", "隐藏已售商品", "action", "HIDE_GOODS"))
+                .andExpect(status().isOk());
+        bodyPut("/api/admin/reports/" + report + "/goods-restoration", 4, Map.of("note", "解除隐藏"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("SOLD"));
+        assertEquals("SOLD", jdbc.queryForObject("SELECT status FROM market_goods WHERE id=12", String.class));
+    }
+
+    @Test
+    void restorationRejectsMissingReportsWrongTargetsAndNonHiddenGoods() throws Exception {
+        bodyPut("/api/admin/reports/999/goods-restoration", 4, Map.of("note", "核查"))
+                .andExpect(status().isNotFound());
+        long report = reportGoods(11);
+        bodyPut("/api/admin/reports/" + report + "/goods-restoration", 4, Map.of("note", "核查"))
+                .andExpect(status().isConflict());
+        long userReport = id(bodyPost("/api/reports", 2,
+                Map.of("targetType", "USER", "targetId", 3, "reason", "核查用户"))
+                .andExpect(status().isCreated()));
+        bodyPut("/api/admin/reports/" + userReport + "/goods-restoration", 4, Map.of("note", "核查"))
+                .andExpect(status().isBadRequest());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM community_audit WHERE action='GOODS_RESTORED'", Integer.class));
+    }
+
     private int concurrentReview(CountDownLatch ready, CountDownLatch start) throws Exception {
         ready.countDown();
         if(!start.await(10,TimeUnit.SECONDS)) throw new IllegalStateException("timeout");

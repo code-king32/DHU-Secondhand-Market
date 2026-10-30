@@ -105,7 +105,9 @@ class AcceptanceFlowTests {
 
         Client second = login(email);
         send(delete("/api/account/me").session(first), Map.of("password", "wrong-password"))
-                .andExpect(status().is4xxClientError());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PASSWORD_MISMATCH"));
+        mvc.perform(get("/api/auth/me").session(first)).andExpect(status().isOk());
         mvc.perform(get("/api/auth/me").session(second.session)).andExpect(status().isOk());
 
         send(delete("/api/account/me").session(first), Map.of("password", PASSWORD))

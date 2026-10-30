@@ -1,5 +1,6 @@
 package com.dhu.secondhand.common;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.ResponseEntity;
@@ -13,7 +14,10 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 @Order(Ordered.LOWEST_PRECEDENCE)
 @RestControllerAdvice
 public class ApiExceptionHandler {
-    public record ErrorResponse(String message) { }
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ErrorResponse(String message, String code) {
+        public ErrorResponse(String message) { this(message, null); }
+    }
 
     @ExceptionHandler(RateLimitException.class)
     public ResponseEntity<ErrorResponse> limited(RateLimitException exception) {
@@ -23,7 +27,8 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ErrorResponse> business(ApiException exception) {
-        return ResponseEntity.status(exception.getStatus()).body(new ErrorResponse(exception.getMessage()));
+        return ResponseEntity.status(exception.getStatus())
+                .body(new ErrorResponse(exception.getMessage(), exception.getCode()));
     }
 
     @ExceptionHandler({BindException.class, HttpMessageNotReadableException.class, MissingServletRequestPartException.class})

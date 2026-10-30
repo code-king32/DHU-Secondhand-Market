@@ -20,6 +20,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.List;
@@ -121,16 +123,47 @@ public class ImageStorage {
         return "/api/images/" + name;
     }
 
+    public List<String> normalizeUrls(List<String> urls) {
+        if (urls == null) return List.of();
+        return urls.stream().map(url -> {
+            if (url == null) throw invalid("图片地址不能为空");
+            try {
+                URI uri = URI.create(url);
+                if (uri.getScheme() != null) {
+                    if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                            || uri.getHost() == null || uri.getUserInfo() != null || uri.getFragment() != null) {
+                        throw new IllegalArgumentException();
+                    }
+                } else if (!url.matches("/api/images/[0-9a-f]{32}\\.(jpg|png)")) {
+                    throw new IllegalArgumentException();
+                }
+                // 保留 /api/images/ 为站内图片命名空间，无论域名或 URL 编码形式如何都按站内引用校验。
+                String path = uri.getPath();
+                if (path != null) {
+                    path = new URI(null, null, path.replaceAll(";[^/]*", ""), null).normalize().getPath();
+                    if (path.startsWith("/api/images/")) {
+                        if (!path.matches("/api/images/[0-9a-f]{32}\\.(jpg|png)")) throw new IllegalArgumentException();
+                        return path;
+                    }
+                }
+                return url;
+            } catch (IllegalArgumentException | URISyntaxException exception) {
+                throw invalid("请选择已上传的图片或有效的 HTTP/HTTPS 图片地址");
+            }
+        }).toList();
+    }
+
     // 调用者已在商品事务中锁住所有者；图片校验和引用变更随商品一起提交。
     public void bind(long owner, long goodsId, List<String> urls, List<String> previousUrls) {
         var names = new HashSet<String>();
-        for (String url : urls == null ? List.<String>of() : urls) {
+        var previous = normalizeUrls(previousUrls);
+        for (String url : normalizeUrls(urls)) {
             if (!url.startsWith("/api/images/")) continue;
             String name = url.substring("/api/images/".length());
             Path path = resolve(name);
             var owners = jdbc.query("SELECT owner_id,status FROM app_uploaded_image WHERE name=? FOR UPDATE",
                     (rs, row) -> new Owner(rs.getLong(1), rs.getString(2)), name);
-            if (owners.isEmpty() && previousUrls.contains(url) && Files.isRegularFile(path)) {
+            if (owners.isEmpty() && previous.contains(url) && Files.isRegularFile(path)) {
                 // 只接管升级前已属于当前商品的站内图片，不认领未知文件或他人图片。
                 try {
                     jdbc.update("INSERT INTO app_uploaded_image(name,owner_id,byte_size,created_at,status) VALUES(?,?,?,?,'ACTIVE')",

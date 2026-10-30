@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -219,7 +221,78 @@ class ImageUploadTests {
     }
 
     @Test
-    void concurrentCleanupAndPublicationCannotLeavePublishedGoodsWithDeletedImage() throws Exception {
+    void absoluteAndEncodedLocalUrlsCannotBypassOwnershipOnCreateOrEdit() throws Exception {
+        String url = upload(1, "png");
+        long id = json.readTree(mvc.perform(post("/api/goods").session(session(2))
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(goods())))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asLong();
+        String name = url.substring("/api/images/".length());
+        for (String absolute : List.of("http://localhost:" + port + url,
+                "https://market.example.invalid" + url + "?preview=1",
+                "http://localhost/%61pi/images/" + name,
+                "http://localhost/ignored/../api/images/" + name,
+                "http://localhost/api/images;ignored/" + name,
+                "http://localhost/api%2Fimages%2F" + name)) {
+            mvc.perform(post("/api/goods").session(session(2)).contentType(MediaType.APPLICATION_JSON)
+                            .content(json.writeValueAsBytes(goods(absolute))))
+                    .andExpect(status().isForbidden());
+            mvc.perform(put("/api/goods/{id}", id).session(session(2)).contentType(MediaType.APPLICATION_JSON)
+                            .content(json.writeValueAsBytes(goods(absolute))))
+                    .andExpect(status().isForbidden());
+        }
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM market_goods", Integer.class));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM app_goods_image", Integer.class));
+        assertEquals("[]", jdbc.queryForObject("SELECT image_urls FROM market_goods WHERE id=?", String.class, id));
+    }
+
+    @Test
+    void absoluteLocalUrlsAreCanonicalizedAndProtectedUntilTheirLastReferenceIsRemoved() throws Exception {
+        String url = upload(1, "png");
+        String absolute = "http://localhost:" + port + url + "?preview=1";
+        String created = mvc.perform(post("/api/goods").session(session(1)).contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsBytes(goods(absolute))))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.imageUrls[0]").value(url))
+                .andReturn().getResponse().getContentAsString();
+        long id = json.readTree(created).get("id").asLong();
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM app_goods_image WHERE goods_id=?", Integer.class, id));
+        when(clock.instant()).thenReturn(NOW.plusSeconds(25 * 3600));
+        storage.cleanupUnused();
+        mvc.perform(get(url)).andExpect(status().isOk());
+        mvc.perform(put("/api/goods/{id}", id).session(session(1)).contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsBytes(goods("https://example.com/legacy.png"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.imageUrls[0]").value("https://example.com/legacy.png"));
+        when(clock.instant()).thenReturn(NOW.plusSeconds(50 * 3600));
+        storage.cleanupUnused();
+        mvc.perform(get(url)).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void editingLegacyAbsoluteLocalUrlsRegistersReferencesAndStillValidatesTheUrl() throws Exception {
+        String url = upload(1, "png");
+        String absolute = "https://market.example.invalid" + url;
+        String created = mvc.perform(post("/api/goods").session(session(1)).contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsBytes(goods())))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        long id = json.readTree(created).get("id").asLong();
+        jdbc.update("UPDATE market_goods SET image_urls=? WHERE id=?", json.writeValueAsString(List.of(absolute)), id);
+        mvc.perform(put("/api/goods/{id}", id).session(session(1)).contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsBytes(goods(absolute))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.imageUrls[0]").value(url));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM app_goods_image WHERE goods_id=?", Integer.class, id));
+        for (String invalid : List.of("http://user@localhost" + url, "http://localhost" + url + "#fragment",
+                "ftp://localhost" + url)) {
+            mvc.perform(put("/api/goods/{id}", id).session(session(1)).contentType(MediaType.APPLICATION_JSON)
+                            .content(json.writeValueAsBytes(goods(invalid))))
+                    .andExpect(status().isBadRequest());
+        }
+        when(clock.instant()).thenReturn(NOW.plusSeconds(25 * 3600));
+        storage.cleanupUnused();
+        mvc.perform(get(url)).andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void concurrentCleanupAndPublicationCannotLeavePublishedGoodsWithDeletedImage(boolean absolute) throws Exception {
         String url = upload(1, "png");
         when(clock.instant()).thenReturn(NOW.plusSeconds(25 * 3600));
         var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
@@ -228,7 +301,8 @@ class ImageUploadTests {
             var publish = executor.submit(() -> {
                 start.await();
                 return mvc.perform(post("/api/goods").session(session(1)).contentType(MediaType.APPLICATION_JSON)
-                        .content(json.writeValueAsBytes(goods(url)))).andReturn().getResponse().getStatus();
+                        .content(json.writeValueAsBytes(goods(absolute ? "http://localhost:" + port + url : url))))
+                        .andReturn().getResponse().getStatus();
             });
             var cleanup = executor.submit(() -> { start.await(); storage.cleanupUnused(); return true; });
             start.countDown();

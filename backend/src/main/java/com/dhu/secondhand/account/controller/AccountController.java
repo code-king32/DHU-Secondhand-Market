@@ -55,9 +55,13 @@ public class AccountController {
         long id = auth.requireUserId(request);
         transactions.executeWithoutResult(transaction -> {
             jdbc.queryForObject("SELECT id FROM app_user WHERE id=? FOR UPDATE", Long.class, id);
+            // 等待账号锁期间可能发生禁用、注销或会话撤销，必须在锁内重新校验。
+            if (auth.requireUserId(request) != id) {
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "SESSION_EXPIRED", "登录状态已失效，请重新登录");
+            }
             var user = users.selectById(id);
             if (!passwords.matches(body.password(), user.getPasswordHash())) {
-                throw new ApiException(HttpStatus.UNAUTHORIZED, "密码错误");
+                throw new ApiException(HttpStatus.BAD_REQUEST, "PASSWORD_MISMATCH", "密码错误");
             }
             if ("ADMIN".equals(user.getRole())) {
                 throw new ApiException(HttpStatus.CONFLICT, "管理员账号不能自行注销");
@@ -66,7 +70,11 @@ public class AccountController {
             jdbc.update("UPDATE app_user SET status=2, password_hash='', nickname='已注销用户', session_version=session_version+1 WHERE id=?", id);
             guards.forEach(guard -> guard.onClosed(id));
         });
-        request.getSession(false).invalidate();
+        // 注销已经提交，并发退出造成的 Session 消失或失效不应把成功响应变成 500。
+        var session = request.getSession(false);
+        if (session != null) {
+            try { session.invalidate(); } catch (IllegalStateException ignored) { }
+        }
         return ResponseEntity.noContent().build();
     }
 

@@ -129,6 +129,20 @@ curl.exe -i "http://localhost:8080/api/goods"
 
 登录后通过 Session Cookie 保持身份，使用 Postman 等工具联调时需保留 Cookie。注册邮箱限于 `mail.dhu.edu.cn` 和 `dhu.edu.cn`。
 
+### 反向代理部署的来源与限流配置
+
+直连部署无需配置代理名单，默认忽略客户端提供的 `X-Forwarded-For`。经过 Nginx 等代理部署时，在本地配置中设置 `app.web.trusted-proxies` 为后端实际 TCP 对端代理的精确 IP，多个地址用逗号分隔，例如 `127.0.0.1,::1`。只支持 IP 地址，不接受主机名或 CIDR；不要把普通客户端地址加入名单。登录与验证码接口从地址链右侧跳过可信代理，使用首个不可信节点限流；无效、过长或重复的转发头会退回 TCP 对端地址。
+
+保留 `server.forward-headers-strategy=none`，确保容器不会提前把 TCP 对端改写为客户端地址。单层 Nginx 代理应覆盖外部提交的转发头，例如在 `/api/` 的代理配置中使用：
+
+```nginx
+proxy_set_header Host $http_host;
+proxy_set_header X-Forwarded-For $remote_addr;
+proxy_pass http://127.0.0.1:8080;
+```
+
+浏览器对外访问的完整来源须加入 `app.web.allowed-origins`，例如 `https://market.example.edu.cn`，以便来源检查和 CORS 使用正确的协议及域名。若由代理终止 HTTPS，生产配置同时设置 `server.servlet.session.cookie.secure=true`。此处为部署配置要求，仓库默认仍用于本地 HTTP 开发。
+
 ## 测试
 
 组长快速验收可使用[组长验收包](tools/acceptance/README.md)：独立测试库、四类演示账号、多种商品/交易状态、Postman 集合及初始化/重置/清理脚本。演示身份通过正常登录使用，不改动日常开发库。
