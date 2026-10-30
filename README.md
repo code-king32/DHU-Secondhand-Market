@@ -1,195 +1,93 @@
 # DHU Secondhand Market
 
-DHU 校园二手交易平台，三人团队课程项目。支持校园邮箱认证、商品发布与检索、线下交易、信誉评价及举报申诉。
+DHU 校园二手交易平台，三人团队课程项目。支持校园邮箱认证、商品发布与检索、线下交易、信誉评价、举报申诉、收藏和求购。
 
-仓库包含 Spring Boot 后端与 Vue 3 前端，核心业务已有实现和自动化测试；前端启动步骤见 [frontend/README.md](frontend/README.md)，完整联调与部署仍需验收。
+后端核心业务已实现并有自动化测试。前端入口见 [frontend/README.md](frontend/README.md)；当前验证结果与未完成验收统一记录在[联调验收清单](docs/06-联调验收清单.md)。
 
-## 技术栈
+## 技术与范围
 
-| 层 | 技术 |
-|----|------|
+| 项目 | 当前实现 |
+|---|---|
 | 后端 | Java 17、Spring Boot 3.5.16、Spring MVC |
 | 数据访问 | MyBatis-Plus 3.5.17、JdbcTemplate |
-| 数据库 | MySQL 8.0 |
-| 认证 | Session Cookie、校园邮箱验证码、BCrypt 哈希 |
-| 邮件 | Spring Boot Mail、SMTP |
-| 测试 | JUnit 5、Spring Boot Test、MockMvc、H2 |
-| 构建 | Maven |
-| 前端 | Vue 3 + TypeScript + Vite |
+| 数据库 | MySQL 8.0；默认测试使用 H2 |
+| 认证 | 校园邮箱验证码、BCrypt、Session Cookie |
+| 邮件与图片 | SMTP 持久化投递任务、本地 JPG/PNG 文件及引用管理 |
+| 前端 | Vue 3、TypeScript、Vite，独立工程 |
 
-## 功能模块
+交易在线下完成，当前不涉及在线支付、物流、实时聊天、Redis 或消息中间件。身份、状态流转和权限以接口及实现为准；待确认业务规则列在验收清单中。
 
-- **身份与账号**：校园邮箱验证码、注册、登录/退出、本人信息、昵称修改、公开资料、账号注销。
-- **商品管理**：发布、编辑、上下架、分类、关键词搜索、分页、公开详情与本人管理。
-- **线下交易**：买家申请、卖家接受、买卖双方确认完成、取消、本人买入/卖出记录。
-- **信誉与治理**：交易互评、信誉摘要、举报、申诉、管理员处理、账号禁用/恢复、商品隐藏及审计。
-- **扩展功能**：收藏、求购、教材分类筛选。
+## 快速启动后端
 
-商品图片支持直接上传 JPG、PNG（每张最多 5 MB，每件商品最多 9 张），原有 HTTP/HTTPS 图片地址仍兼容。图片保存在后端工作目录的 `uploads/images/`，可通过 `app.images.directory` 修改；部署或迁移时需同时保留数据库和该目录。交易在线下完成，当前不涉及在线支付、物流或实时聊天。
+需要 JDK 17、Maven、MySQL 8.0；仓库 PowerShell 脚本要求 PowerShell 7。以下命令均从仓库根目录执行。
 
-## 三人分工
+1. 为新环境初始化开发库：
 
-| 成员 | 职责 |
-|------|------|
-| A（组长） | 项目统筹、质量保障、集成与部署 |
-| B | 前端开发 |
-| C | 数据库、后端架构、业务接口、权限与事务、接口测试 |
+   ```powershell
+   ./tools/Initialize-Database.ps1 -DatabaseUser root
+   ```
 
-## 目录结构
+   MySQL 客户端交互读取密码。固定创建 `dhu_secondhand`，库已存在时拒绝初始化；已有库按[数据库与迁移](docs/03-数据库与迁移.md)核对增量结构。`-Preview` 只输出 SQL，不连接数据库。
 
-```
-DHU-Secondhand-Market/
-├── backend/
-│   ├── pom.xml
-│   └── src/
-│       ├── main/java/com/dhu/secondhand/
-│       │   ├── identity/    # 邮箱认证、注册与登录
-│       │   ├── account/     # 账号与用户资料
-│       │   ├── marketplace/ # 商品与线下交易
-│       │   ├── community/   # 信誉、治理、收藏与求购
-│       │   └── common/      # 会话、异常与 Web 配置
-│       ├── main/resources/ # 应用配置
-│       └── test/           # 自动化测试与测试建表脚本
-├── docs/                   # 课程任务书、设计文档、接口说明
-├── sql/                    # MySQL 建表与迁移脚本
-├── tools/acceptance/        # 独立测试库、演示账号、Postman 验收集合
-├── .gitignore
-└── README.md
-```
+2. 复制本地配置示例：
 
-## 本地运行
+   ```powershell
+   Copy-Item backend/config/application-local.properties.example backend/src/main/resources/application-local.properties
+   ```
 
-### 1. 准备环境与数据库
+   已有本地配置时直接编辑原文件，保留自己的凭据。设置 `DB_USERNAME`、`DB_PASSWORD`、`MAIL_USERNAME`、`MAIL_PASSWORD` 环境变量；也可在被忽略的本地文件中填写连接信息。模板默认连接本机开发库和 QQ SMTP SSL，其他邮件服务按[运行与部署](docs/07-运行与部署.md)调整。
 
-安装 JDK 17、Maven 和 MySQL 8.0。先在仓库根目录打开终端，进入 MySQL 客户端（按本机实际账号替换 `root`）：
+3. 启动服务：
+
+   ```powershell
+   cd backend
+   mvn spring-boot:run "-Dspring-boot.run.profiles=local"
+   ```
+
+   默认地址为 `http://localhost:8080`，后端提供 API，不提供首页。检查公开接口：
+
+   ```powershell
+   curl.exe -i "http://localhost:8080/api/goods"
+   ```
+
+## 测试与验收
+
+默认测试统一从仓库根目录运行：
 
 ```powershell
-mysql -u root -p
+./tools/Test-Backend.ps1
 ```
 
-新环境在 MySQL 客户端执行：
+仅使用本机已缓存的 Maven 依赖时可加 `-Offline`；`-Preview` 仅显示实际命令。默认套件显式关闭所有手动测试开关，使用 H2 和邮件替身，不连接真实 MySQL、不发信。
 
-```sql
-CREATE DATABASE dhu_secondhand
-    CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+真实数据库、可靠性、验收包、迁移和邮件各有独立入口。参数、影响范围和最新结果见[联调验收清单](docs/06-联调验收清单.md)。准备演示账号和 Postman 请求集合见[组长验收包](tools/acceptance/README.md)。
 
-SOURCE sql/01_user.sql;
-SOURCE sql/02_registration_email_code.sql;
-SOURCE sql/03_user_role.sql;
-SOURCE sql/04_marketplace.sql;
-SOURCE sql/05_community.sql;
-SOURCE sql/06_marketplace_visibility.sql;
-SOURCE sql/07_session_version.sql;
-```
+## 文件职责
 
-`SOURCE` 的相对路径基于启动 MySQL 客户端时的目录。脚本包含 `USE dhu_secondhand`；已有数据库应先核对表结构，只执行缺失的迁移，不要重复执行整套脚本。`03` 和 `07` 添加字段，不能重复运行；`06` 更新商品状态约束，使旧表支持管理员隐藏状态。
+| 位置 | 用途 |
+|---|---|
+| `backend/src/main/java/com/dhu/secondhand/` | 认证、账号、商品交易、社区治理及公共支持 |
+| `backend/src/main/resources/application.properties` | 可提交的公共默认配置，不含连接凭据 |
+| `backend/config/` | 开发和生产配置示例，不自动加载 |
+| `backend/src/main/resources/sql/runtime-schema.sql` | 邮件投递、图片归属和引用三张运行时表 |
+| `backend/src/test/` | 自动化测试及独立 H2 建表脚本 |
+| `sql/` | MySQL 业务建表与历史增量脚本，顺序见清单文件 |
+| `tools/` | 开发库初始化、测试入口和独立验收工具 |
+| `docs/` | 设计、接口、数据库、验收及部署说明 |
 
-### 2. 配置本地连接
+## 文档索引
 
-新建 `backend/src/main/resources/application-local.properties`，填写本机数据库和 SMTP 配置。该文件已被 Git 忽略。
-
-以下示例使用环境变量提供连接信息；也可在本地文件中替换为实际值。SMTP 示例对应 QQ 邮箱 SSL 连接：
-
-```properties
-spring.datasource.url=jdbc:mysql://localhost:3306/dhu_secondhand?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
-spring.datasource.username=${DB_USERNAME}
-spring.datasource.password=${DB_PASSWORD}
-
-spring.mail.host=smtp.qq.com
-spring.mail.port=465
-spring.mail.username=${MAIL_USERNAME}
-spring.mail.password=${MAIL_PASSWORD}
-spring.mail.properties.mail.smtp.auth=true
-spring.mail.properties.mail.smtp.ssl.enable=true
-spring.mail.properties.mail.smtp.connectiontimeout=5000
-spring.mail.properties.mail.smtp.timeout=5000
-spring.mail.properties.mail.smtp.writetimeout=5000
-```
-
-使用环境变量时，在启动进程的环境中设置 `DB_USERNAME`、`DB_PASSWORD`、`MAIL_USERNAME`、`MAIL_PASSWORD`。QQ 邮箱的邮件密码填写 SMTP 授权码。使用其他发件服务时，按其要求调整 SMTP 主机、端口和加密方式。
-
-启动时会幂等创建邮件投递、图片归属和商品图片引用三张辅助表（脚本为 `backend/src/main/resources/sql/runtime-schema.sql`），仅新增表，不修改既有业务表和数据。数据库账号需要建表权限；若由管理员预先执行该脚本，可配置 `spring.sql.init.mode=never`。
-
-发信任务会持久化并有限重试，待发验证码用本地 `uploads/mail-code.key` 加密；该密钥由首次发信自动生成，保存在 Git 忽略目录中，迁移和恢复时应与数据库一起保留。图片默认每人100张、共100 MB，未被商品引用且闲置24小时后自动清理。默认限额和任务参数在 `application.properties`，可在本地配置中覆盖；详见[身份接口](docs/02-身份认证接口.md)和[商品接口](docs/04-商品交易接口.md)。
-
-### 3. 启动后端
-
-在仓库根目录执行：
-
-```powershell
-cd backend
-mvn spring-boot:run "-Dspring-boot.run.profiles=local"
-```
-
-开发和验收后端统一使用 `http://localhost:8080`，前端代理及 Postman 环境均已对齐。切换验收库时先停止原后端，只切换数据库配置。当前提供 JSON 接口，没有首页；可以在另一个终端查询商品列表：
-
-```powershell
-curl.exe -i "http://localhost:8080/api/goods"
-```
-
-登录后通过 Session Cookie 保持身份，使用 Postman 等工具联调时需保留 Cookie。注册邮箱限于 `mail.dhu.edu.cn` 和 `dhu.edu.cn`。
-
-### 反向代理部署的来源与限流配置
-
-直连部署无需配置代理名单，默认忽略客户端提供的 `X-Forwarded-For`。经过 Nginx 等代理部署时，在本地配置中设置 `app.web.trusted-proxies` 为后端实际 TCP 对端代理的精确 IP，多个地址用逗号分隔，例如 `127.0.0.1,::1`。只支持 IP 地址，不接受主机名或 CIDR；不要把普通客户端地址加入名单。登录与验证码接口从地址链右侧跳过可信代理，使用首个不可信节点限流；无效、过长或重复的转发头会退回 TCP 对端地址。
-
-保留 `server.forward-headers-strategy=none`，确保容器不会提前把 TCP 对端改写为客户端地址。单层 Nginx 代理应覆盖外部提交的转发头，例如在 `/api/` 的代理配置中使用：
-
-```nginx
-proxy_set_header Host $http_host;
-proxy_set_header X-Forwarded-For $remote_addr;
-proxy_pass http://127.0.0.1:8080;
-```
-
-浏览器对外访问的完整来源须加入 `app.web.allowed-origins`，例如 `https://market.example.edu.cn`，以便来源检查和 CORS 使用正确的协议及域名。若由代理终止 HTTPS，生产配置同时设置 `server.servlet.session.cookie.secure=true`。此处为部署配置要求，仓库默认仍用于本地 HTTP 开发。
-
-## 测试
-
-组长快速验收可使用[组长验收包](tools/acceptance/README.md)：独立测试库、四类演示账号、多种商品/交易状态、Postman 集合及初始化/重置/清理脚本。演示身份通过正常登录使用，不改动日常开发库。
-
-在 `backend` 目录执行：
-
-```powershell
-mvn test
-```
-
-默认测试使用 H2 和邮件替身，覆盖认证、账号、商品交易、信誉治理、权限、部分并发场景及 HTTP 会话，不依赖真实邮箱或 MySQL。真实数据库、发信和迁移测试默认跳过，H2 测试通过不代表真实环境已验收。
-
-已配置本地连接且完成相应建表后，可单独运行真实 MySQL 测试：
-
-```powershell
-mvn "-Dtest=ManualDatabaseConnectionTests,ManualMarketplaceTests,ManualAcceptanceFlowTests" "-Ddb.test.enabled=true" test
-```
-
-上述测试使用邮件替身。数据库连接测试中的用户写入会回滚；验证码、商品并发与接口闭环测试会创建独立随机数据，结束时按本次记录精确清理。接口闭环启动真实 HTTP 端口，为每个用户保持独立 Cookie，验证 MySQL 下跨请求提交的注册登录、交易、评价、治理和注销；浏览器页面及实际收件仍需单独验收。
-
-新增的真实 MySQL 可靠性检查会创建并删除一个随机临时库，邮件使用替身，不改动开发库或验收库中的业务数据（账号需有建库权限）：
-
-```powershell
-mvn "-Dtest=ManualReliabilityMySqlTests" "-Dreliability.mysql.enabled=true" test
-```
-
-真实邮件测试需额外在本地配置 `app.mail.test-recipient`，再执行：
-
-```powershell
-mvn "-Dtest=ManualMailSendTests" "-Dmail.test.enabled=true" test
-```
-
-邮件测试会向配置的收件地址发送固定测试验证码；它用于验证发信链路，实际注册流程使用随机验证码。
-
-## 文档
-
-- [课程任务书](docs/软件项目管理课程任务书.docx)：需求与分工依据。
-- [身份认证与账号接口](docs/02-身份认证接口.md)：验证码、注册登录、Session、用户资料与账号注销。
+- [项目设计](docs/01-项目设计文档.md)：当前架构、模块和统一接口约定。
+- [身份认证与账号接口](docs/02-身份认证接口.md)。
+- [数据库与迁移](docs/03-数据库与迁移.md)：14张应用表、初始化顺序和迁移边界。
 - [商品与线下交易接口](docs/04-商品交易接口.md)。
 - [信誉治理及扩展接口](docs/05-信誉治理及扩展接口.md)。
-- [联调验收清单](docs/06-联调验收清单.md)：当前验证记录、手工流程及待确认业务规则。
-- [组长验收包](tools/acceptance/README.md)：独立测试环境、样例账号、自动化请求及数据恢复操作。
-- [早期项目设计](docs/01-项目设计文档.md)：历史参考，与任务书不一致的部分以任务书为准。
+- [联调验收清单](docs/06-联调验收清单.md)：测试入口、当前状态和历史结果。
+- [运行与部署](docs/07-运行与部署.md)：环境配置、生产运行、代理和备份。
+- [课程任务书](docs/软件项目管理课程任务书.docx)：需求与分工依据。
 
-## 协作规范
+## 协作约定
 
-- **分支**：`main` 只放能跑通的代码；每人一个功能分支，靠 Pull Request 合并。
-- **提交信息**：`feat: xxx` / `fix: xxx` / `docs: xxx` / `refactor: xxx`。
-- **验收**：模块负责人验证正常流程、权限和异常场景；业务规则变更同步更新代码、测试与接口文档。
-- **本地配置**：数据库密码、邮箱授权码等仅保存在本地配置或环境变量中，不提交凭据。
+A 负责统筹、质量保障、集成与部署；B 负责前端；C 负责数据库、后端架构、业务接口、权限事务和接口测试。业务规则变更同步修改实现、测试和对应文档。
+
+使用功能分支和 Pull Request 协作，`main` 保持可运行；提交信息使用 `feat:`、`fix:`、`docs:` 或 `refactor:`。数据库密码、SMTP 授权码、本地生产配置、上传图片和密钥不提交。部署备份需同时覆盖数据库、图片目录及邮件任务密钥。

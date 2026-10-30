@@ -1,0 +1,12 @@
+{
+  "businessScripts": [
+    "sql/01_user.sql",
+    "sql/02_registration_email_code.sql",
+    "sql/03_user_role.sql",
+    "sql/04_marketplace.sql",
+    "sql/05_community.sql",
+    "sql/06_marketplace_visibility.sql",
+    "sql/07_session_version.sql"
+  ],
+  "runtimeScript": "backend/src/main/resources/sql/runtime-schema.sql"
+}

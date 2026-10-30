@@ -1,4 +1,4 @@
--- 仅增加本轮功能的独立表，不修改现有业务表或数据；兼容 MySQL 与测试 H2。
+-- 运行时辅助表：邮件投递、图片归属与商品引用；不修改现有业务表或数据，兼容 MySQL 与测试 H2。
 CREATE TABLE IF NOT EXISTS app_mail_delivery (
     id VARCHAR(32) PRIMARY KEY,
     email VARCHAR(254) NOT NULL,
