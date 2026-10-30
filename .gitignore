@@ -14,6 +14,12 @@ uploads/
 application-local.yml
 application-local.yaml
 application-local.properties
+application-prod.yml
+application-prod.yaml
+application-prod.properties
+.env
+.env.*
+!.env.example
 
 # 日志
 *.log

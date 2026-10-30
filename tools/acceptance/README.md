@@ -12,11 +12,11 @@
 
 密码由 MySQL 客户端交互读取，不填进脚本。如果 `mysql` 不在 PATH 中，追加 `-MySql 'C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe'`；其他连接可指定 `-DatabaseHost`、`-DatabasePort`。
 
-`Init` 创建独立库，复用仓库 `sql/01` 至 `07` 的结构，随后写入样例。若同名库已存在，初始化直接失败，不覆盖。执行中途失败时先检查 MySQL 错误和权限；脚本不会自动删除已建库。正常已初始化的库使用 `Reset` 恢复。
+`Init` 创建独立库，按 [schema-manifest.json](../../sql/schema-manifest.json) 复用业务结构及3张运行时辅助表，再创建验收标记并写入样例，与开发库初始化共用SQL生成及客户端调用。若同名库已存在，初始化直接失败，不覆盖。执行中途失败时先检查MySQL错误和权限；DDL不整体回滚，脚本不会自动删除已建库。正常已初始化的库使用 `Reset` 恢复。任何动作加 `-Preview` 只输出SQL，不连接或修改数据库。
 
 ## 2. 启动验收后端
 
-先按[项目 README](../../README.md)准备自己的 `application-local.properties`，本地凭据不提交。开发和验收共用 8080 端口，切换时先停止原后端，只切换数据库，无需修改前端配置。随后在仓库根目录执行：
+先按[运行与部署](../../docs/07-运行与部署.md)复制local配置示例，保留自己的连接凭据。开发和验收共用8080端口，切换时先停止原后端，只切换数据库，无需修改前端配置。随后在仓库根目录执行：
 
 ```powershell
 cd backend
@@ -59,7 +59,7 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=local" "-Dspring-boot.run.argume
 node tools/acceptance/run-collection.mjs
 ```
 
-运行器读取同一集合及环境，执行其中响应断言并维护 Session Cookie；仅支持本集合用到的接口，不是完整 Postman 运行时。当前 HTTP/SQL 自动回归使用此运行器；Postman 导入及其界面操作需组长本机确认。
+运行器读取同一集合及环境，执行其中响应断言并维护Session Cookie；仅支持本集合用到的接口，不是完整Postman运行时。只检查JSON、请求格式及断言脚本语法时执行 `node tools/acceptance/run-collection.mjs --check`，不会发送HTTP请求；随机端口可用 `--base-url http://localhost:端口`。当前HTTP/SQL自动回归使用此运行器，Postman导入及界面操作仍需本机确认。集合保持54请求不变；新增商品恢复、完整图片URL及注销并发回归由JUnit覆盖，浏览器仍须单独验收。
 
 ## 5. 重置与清理
 
@@ -81,10 +81,10 @@ node tools/acceptance/run-collection.mjs
 
 ## 6. 自动回归入口
 
-已配置正常 `local` 连接且安装 Node.js 后，在 `backend` 目录执行：
+已配置正常 `local` 连接且安装Node.js后，从仓库根目录执行：
 
 ```powershell
-mvn "-Dtest=ManualAcceptanceKitTests" "-Dacceptance.kit.test.enabled=true" test
+./tools/Test-Backend.ps1 -Suite Acceptance
 ```
 
 此测试显式创建独立验收库；库已存在时只接管带有正确标记的库并重置。随后在随机 HTTP 端口运行请求集合，检查样例、重复播种拒绝、错误标记拒绝清理、重置后的旧会话失效，以及日常库用户数未变化。结束后保留干净的基线样例。使用邮件替身，不发送邮件；默认 `mvn test` 跳过此项。该命令会重置验收库中的旧结果。

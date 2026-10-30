@@ -6,9 +6,11 @@ const collection = JSON.parse(await readFile(new URL('./DHU-Acceptance.postman_c
 const environment = JSON.parse(await readFile(new URL('./DHU-Acceptance.postman_environment.json', import.meta.url), 'utf8'));
 const values = new Map(environment.values.filter(v => v.enabled !== false).map(v => [v.key, v.value]));
 const args = process.argv.slice(2);
-if (args.length) {
-  if (args.length !== 2 || args[0] !== '--base-url') throw new Error('Usage: node run-collection.mjs [--base-url http://localhost:8080]');
-  values.set('baseUrl', args[1]);
+let checkOnly = false;
+for (let index = 0; index < args.length; index++) {
+  if (args[index] === '--check' && !checkOnly) checkOnly = true;
+  else if (args[index] === '--base-url' && args[index + 1]) values.set('baseUrl', args[++index]);
+  else throw new Error('Usage: node run-collection.mjs [--base-url http://localhost:8080] [--check]');
 }
 const base = new URL(values.get('baseUrl'));
 if (base.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(base.hostname)) {
@@ -24,11 +26,27 @@ function* requests(items) {
     else yield item;
   }
 }
+const entries = [...requests(collection.item)];
+for (const item of entries) {
+  const rawUrl = typeof item.request.url === 'string' ? item.request.url : item.request.url.raw;
+  if (!rawUrl.startsWith('{{baseUrl}}/api/') || !['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(item.request.method)) {
+    throw new Error(`Unsupported request: ${item.name}`);
+  }
+  if (!item.event?.some(event => event.listen === 'test')) throw new Error(`Missing assertions: ${item.name}`);
+  for (const event of item.event) {
+    if (event.listen !== 'test') throw new Error('Only response test scripts are supported');
+    new vm.Script(event.script.exec.join('\n'), { filename: item.name });
+  }
+}
+if (checkOnly) {
+  console.log(`Validated: ${entries.length} requests; no HTTP requests sent.`);
+  process.exit(0);
+}
 let cookie = '';
 let count = 0;
 let assertions = 0;
 try {
-  for (const item of requests(collection.item)) {
+  for (const item of entries) {
     const url = new URL(expand(typeof item.request.url === 'string' ? item.request.url : item.request.url.raw));
     if (url.origin !== base.origin) throw new Error('Cross-origin request refused');
     const headers = Object.fromEntries((item.request.header ?? []).filter(h => !h.disabled).map(h => [h.key, expand(h.value)]));
