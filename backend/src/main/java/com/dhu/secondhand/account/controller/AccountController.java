@@ -5,6 +5,7 @@ import com.dhu.secondhand.account.mapper.UserMapper;
 import com.dhu.secondhand.account.service.AccountClosureGuard;
 import com.dhu.secondhand.common.ApiException;
 import com.dhu.secondhand.common.SessionAuth;
+import com.dhu.secondhand.common.TextValidation;
 import com.dhu.secondhand.identity.service.PasswordService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -44,10 +45,15 @@ public class AccountController {
     public UserView update(@Valid @RequestBody ProfileRequest body, HttpServletRequest request) {
         long id = auth.requireUserId(request);
         String nickname = body.nickname().strip();
-        if (nickname.isEmpty()) throw new ApiException(HttpStatus.BAD_REQUEST, "昵称不能为空");
-        int updated = jdbc.update("UPDATE app_user SET nickname=? WHERE id=? AND status=0", nickname, id);
-        if (updated != 1) throw new ApiException(HttpStatus.CONFLICT, "账号状态已发生变化");
-        return UserView.from(users.selectById(id));
+        if (TextValidation.isBlank(nickname)) throw new ApiException(HttpStatus.BAD_REQUEST, "昵称不能为空");
+        return transactions.execute(transaction -> {
+            jdbc.queryForObject("SELECT id FROM app_user WHERE id=? FOR UPDATE", Long.class, id);
+            if (auth.requireUserId(request) != id) {
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "SESSION_EXPIRED", "登录状态已失效，请重新登录");
+            }
+            jdbc.update("UPDATE app_user SET nickname=? WHERE id=?", nickname, id);
+            return UserView.from(users.selectById(id));
+        });
     }
 
     @DeleteMapping("/account/me")

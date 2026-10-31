@@ -4,6 +4,7 @@ import com.dhu.secondhand.account.controller.AccountController;
 import com.dhu.secondhand.common.ApiException;
 import com.dhu.secondhand.common.SessionAuth;
 import com.dhu.secondhand.identity.service.PasswordService;
+import com.dhu.secondhand.identity.controller.AuthController;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,7 @@ import static org.mockito.Mockito.*;
 class AccountClosureConcurrencyTests {
     private static final String PASSWORD = "ClosurePassword123!";
     @Autowired AccountController accounts;
+    @Autowired AuthController authentication;
     @Autowired JdbcTemplate jdbc;
     @Autowired PasswordService passwords;
     @MockitoSpyBean SessionAuth auth;
@@ -119,6 +121,32 @@ class AccountClosureConcurrencyTests {
         assertEquals("SESSION_EXPIRED", exception.getCode());
         assertEquals(0, jdbc.queryForObject("SELECT status FROM app_user WHERE id=1", Integer.class));
         assertEquals("ON_SALE", jdbc.queryForObject("SELECT status FROM market_goods WHERE id=10", String.class));
+    }
+
+    @Test
+    void sessionRevocationAfterAuthenticationAlsoPreventsProfileChanges() {
+        var request = request();
+        var first = new AtomicBoolean(true);
+        doAnswer(invocation -> {
+            long id = (long) invocation.callRealMethod();
+            if (first.getAndSet(false)) jdbc.update("UPDATE app_user SET session_version=session_version+1 WHERE id=?", id);
+            return id;
+        }).when(auth).requireUserId(request);
+        String nickname = jdbc.queryForObject("SELECT nickname FROM app_user WHERE id=1", String.class);
+        ApiException exception = assertThrows(ApiException.class,
+                () -> accounts.update(new AccountController.ProfileRequest("不应保存"), request));
+        assertEquals(HttpStatus.UNAUTHORIZED, exception.getStatus());
+        assertEquals("SESSION_EXPIRED", exception.getCode());
+        assertEquals(nickname, jdbc.queryForObject("SELECT nickname FROM app_user WHERE id=1", String.class));
+    }
+
+    @Test
+    void logoutRemainsIdempotentWhenAnotherRequestAlreadyInvalidatedTheSession() {
+        var stale = mock(HttpSession.class);
+        doThrow(new IllegalStateException("Already invalidated")).when(stale).invalidate();
+        var request = mock(jakarta.servlet.http.HttpServletRequest.class);
+        when(request.getSession(false)).thenReturn(stale);
+        assertEquals(HttpStatus.NO_CONTENT, authentication.logout(request).getStatusCode());
     }
 
     private MockHttpServletRequest request() {

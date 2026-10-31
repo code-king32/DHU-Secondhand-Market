@@ -18,6 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.MailSendException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -58,7 +59,7 @@ class RegistrationCodeTests {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper json;
     @Autowired private JdbcTemplate jdbc;
-    @Autowired private VerificationCodeHasher hasher;
+    @MockitoSpyBean private VerificationCodeHasher hasher;
     @Autowired private RegistrationCodeService service;
     @Autowired private MailDeliveryService deliveries;
     @Autowired private org.springframework.transaction.PlatformTransactionManager manager;
@@ -215,6 +216,18 @@ class RegistrationCodeTests {
             status.setRollbackOnly();
         });
         assertNotNull(storedHash());
+    }
+
+    @Test
+    void registrationFinishingDuringCodePreparationPreventsAnotherDelivery() throws Exception {
+        doAnswer(invocation -> {
+            jdbc.update("INSERT INTO app_user(email,password_hash,nickname,email_verified,status) VALUES(?,'hash','已完成注册',1,0)", EMAIL);
+            return invocation.callRealMethod();
+        }).when(hasher).hash(anyString());
+        send(EMAIL).andExpect(status().isConflict());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM registration_email_code", Integer.class));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM app_mail_delivery", Integer.class));
+        verifyNoInteractions(mailService);
     }
 
     @Test

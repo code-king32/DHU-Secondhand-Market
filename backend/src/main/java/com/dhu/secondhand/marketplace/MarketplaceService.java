@@ -1,6 +1,7 @@
 package com.dhu.secondhand.marketplace;
 
 import com.dhu.secondhand.common.ApiException;
+import com.dhu.secondhand.common.TextValidation;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
@@ -282,7 +283,7 @@ public class MarketplaceService {
 
     private String requiredText(String value, int maxLength, String label) {
         String normalized = value == null ? "" : value.strip();
-        if (normalized.isEmpty() || normalized.length() > maxLength) {
+        if (TextValidation.isBlank(normalized) || normalized.length() > maxLength) {
             throw error(HttpStatus.BAD_REQUEST, "商品" + label + "不能为空或超过长度限制");
         }
         return normalized;

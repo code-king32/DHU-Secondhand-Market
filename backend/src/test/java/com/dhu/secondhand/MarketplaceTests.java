@@ -5,6 +5,8 @@ import com.dhu.secondhand.marketplace.MarketplaceClosureGuard;
 import com.dhu.secondhand.marketplace.MarketplaceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -89,6 +91,35 @@ class MarketplaceTests {
         mvc.perform(put("/api/goods/{id}", goods).session(session(1)).contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(goods("\u2003", "TEXTBOOK", "2.00"))))
                 .andExpect(status().isBadRequest());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\u00a0", "\u200b", "\u2060", "\u00a0\u200b"})
+    void rejectsInvisibleOnlyGoodsText(String blank) throws Exception {
+        action(1, "/api/goods", goods(blank, "TEXTBOOK", "2.00")).andExpect(status().isBadRequest());
+        action(1, "/api/goods", Map.of("title", "教材", "description", blank, "price", "2.00"))
+                .andExpect(status().isBadRequest());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM market_goods", Integer.class));
+    }
+
+    @Test
+    void malformedQueryParametersReturnTheApiErrorShape() throws Exception {
+        mvc.perform(get("/api/goods").param("page", "not-a-number"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("请求参数不正确"));
+        mvc.perform(get("/api/goods/not-a-number"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("请求参数不正确"));
+    }
+
+    @Test
+    void fractionalIdsAndTrailingJsonCannotCreateTrades() throws Exception {
+        long goods = createGoods(1, "教材", "TEXTBOOK", "20.00");
+        mvc.perform(post("/api/trades").session(session(2)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"goodsId\":" + goods + ".9}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/trades").session(session(2)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"goodsId\":" + goods + "} {\"goodsId\":999}"))
+                .andExpect(status().isBadRequest());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM market_trade", Integer.class));
     }
 
     @Test

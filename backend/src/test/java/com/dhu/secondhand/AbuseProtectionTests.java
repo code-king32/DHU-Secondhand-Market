@@ -75,4 +75,16 @@ class AbuseProtectionTests {
             assertEquals(2, accepted);
         } finally { executor.shutdownNow(); }
     }
+
+    @Test
+    void reachingBucketCapacityDoesNotBlockAlreadyTrackedClients() {
+        var protection = protection(10000, 10000, 10, 100);
+        for (int index = 0; index < 5000; index++) {
+            protection.beforeLogin("ip-" + index, "account-" + index);
+        }
+        assertDoesNotThrow(() -> protection.beforeLogin("ip-0", "account-0"));
+        assertThrows(RateLimitException.class, () -> protection.beforeLogin("new-ip", "new-account"));
+        when(clock.instant()).thenReturn(now.plusSeconds(60));
+        assertDoesNotThrow(() -> protection.beforeLogin("new-ip", "new-account"));
+    }
 }

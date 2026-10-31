@@ -68,6 +68,10 @@ public class RegistrationCodeService {
             // 短事务同时提交验证码与投递任务，不在持锁期间等待 SMTP。
             codeMapper.ensureExists(email, LocalDateTime.now(clock).withNano(0));
             LocalDateTime lastSentAt = codeMapper.lockLastSentAt(email);
+            // 注册也先锁同一邮箱记录；等待锁期间完成的注册必须阻止继续换码和投递。
+            if (userMapper.selectCount(Wrappers.<User>lambdaQuery().eq(User::getEmail, email)) > 0) {
+                throw new RegistrationCodeException(HttpStatus.CONFLICT, "该邮箱已注册");
+            }
             LocalDateTime now = LocalDateTime.now(clock).withNano(0);
             if (lastSentAt != null && now.isBefore(lastSentAt.plusSeconds(COOLDOWN_SECONDS))) {
                 long remaining = Duration.between(now, lastSentAt.plusSeconds(COOLDOWN_SECONDS)).getSeconds();
