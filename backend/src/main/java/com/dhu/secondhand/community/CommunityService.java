@@ -1,6 +1,7 @@
 package com.dhu.secondhand.community;
 
 import com.dhu.secondhand.common.ApiException;
+import com.dhu.secondhand.common.TextValidation;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -55,11 +56,9 @@ public class CommunityService {
 
     public ReputationView reputation(long userId) {
         ensureUserExists(userId);
-        long total = count("SELECT COUNT(*) FROM community_review WHERE reviewee_id=?", userId);
-        Double average = jdbc.queryForObject("SELECT COALESCE(AVG(rating),0) FROM community_review WHERE reviewee_id=?",
-                Double.class, userId);
-        return new ReputationView(userId, total,
-                BigDecimal.valueOf(average == null ? 0 : average).setScale(2, RoundingMode.HALF_UP));
+        return jdbc.queryForObject("SELECT COUNT(*),COALESCE(AVG(rating),0) FROM community_review WHERE reviewee_id=?",
+                (rs, row) -> new ReputationView(userId, rs.getLong(1),
+                        rs.getBigDecimal(2).setScale(2, RoundingMode.HALF_UP)), userId);
     }
 
     @Transactional
@@ -360,8 +359,7 @@ public class CommunityService {
     private String text(String value, int maxLength) {
         if (value == null) throw bad("内容不能为空");
         String cleaned = value.strip();
-        if (cleaned.isEmpty() || cleaned.codePoints().allMatch(character -> Character.isWhitespace(character)
-                || Character.isSpaceChar(character) || Character.getType(character) == Character.FORMAT)) {
+        if (TextValidation.isBlank(cleaned)) {
             throw bad("内容不能为空");
         }
         if (cleaned.length() > maxLength) throw bad("内容超过长度限制");

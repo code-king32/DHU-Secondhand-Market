@@ -18,6 +18,7 @@ public class AbuseProtection {
     private final boolean enabled;
     private final int loginIp, loginAccount, loginWindow, mailHour, mailDay, emailDay, globalDay;
     private final Map<String, Bucket> buckets = new HashMap<>();
+    private long lastCleanupSecond = Long.MIN_VALUE;
 
     public AbuseProtection(Clock clock, @Value("${app.abuse.enabled:true}") boolean enabled,
             @Value("${app.abuse.login-ip-limit:30}") int loginIp,
@@ -44,6 +45,14 @@ public class AbuseProtection {
                 new Rule("login-account:" + digest(normalize(email)), loginAccount, loginWindow));
     }
 
+    public synchronized void beforeLoginIp(String ip) {
+        if (enabled) consume(new Rule("login-ip:" + digest(ip), loginIp, loginWindow));
+    }
+
+    public synchronized void beforeLoginAccount(String canonicalEmail) {
+        if (enabled) consume(new Rule("login-account:" + digest(normalize(canonicalEmail)), loginAccount, loginWindow));
+    }
+
     public synchronized void loginSucceeded(String email) {
         buckets.remove("login-account:" + digest(normalize(email)));
     }
@@ -58,8 +67,14 @@ public class AbuseProtection {
 
     private void consume(Rule... rules) {
         long now = clock.instant().getEpochSecond();
-        buckets.entrySet().removeIf(entry -> entry.getValue().until <= now);
-        if (buckets.size() + rules.length > 10000) {
+        // 同一秒内不会产生新的到期项，避免每次请求都扫描整个限流表。
+        if (lastCleanupSecond != now) {
+            buckets.entrySet().removeIf(entry -> entry.getValue().until <= now);
+            lastCleanupSecond = now;
+        }
+        int newBuckets = 0;
+        for (Rule rule : rules) if (!buckets.containsKey(rule.key)) newBuckets++;
+        if (buckets.size() + newBuckets > 10000) {
             throw new RateLimitException("请求过多，请稍后重试", 60);
         }
         for (Rule rule : rules) {

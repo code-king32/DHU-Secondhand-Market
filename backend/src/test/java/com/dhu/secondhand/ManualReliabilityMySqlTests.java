@@ -62,6 +62,10 @@ class ManualReliabilityMySqlTests {
                 var jdbc = new JdbcTemplate(source);
                 var manager = new DataSourceTransactionManager(source);
                 assertEquals(schema, jdbc.queryForObject("SELECT DATABASE()", String.class));
+                assertEquals(1, jdbc.queryForObject("""
+                        SELECT _utf8mb4'stúdent@mail.dhu.edu.cn' COLLATE utf8mb4_0900_ai_ci
+                             = _utf8mb4'student@mail.dhu.edu.cn' COLLATE utf8mb4_0900_ai_ci
+                        """, Integer.class));
                 jdbc.execute("CREATE TABLE app_user(id BIGINT PRIMARY KEY,status INT,email_verified INT)");
                 jdbc.update("INSERT INTO app_user VALUES(1,0,1)");
                 jdbc.execute("CREATE TABLE registration_email_code(email VARCHAR(254) PRIMARY KEY,code_hash VARCHAR(100),consumed_at DATETIME)");

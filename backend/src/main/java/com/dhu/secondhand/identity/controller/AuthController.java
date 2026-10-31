@@ -35,17 +35,19 @@ public class AuthController {
 
     @PostMapping("/login")
     public UserView login(@Valid @RequestBody LoginRequest body, HttpServletRequest request) {
-        protection.beforeLogin(clientIps.resolve(request), body.email());
+        protection.beforeLoginIp(clientIps.resolve(request));
         UserView user = service.login(body);
         UserView result = service.openSession(user.id(), request);
-        protection.loginSucceeded(body.email());
+        protection.loginSucceeded(user.email());
         return result;
     }
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletRequest request) {
         var session = request.getSession(false);
-        if (session != null) session.invalidate();
+        if (session != null) {
+            try { session.invalidate(); } catch (IllegalStateException ignored) { }
+        }
         return ResponseEntity.noContent().build();
     }
 

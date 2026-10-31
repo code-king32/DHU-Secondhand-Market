@@ -222,6 +222,10 @@ class AcceptanceFlowTests {
                 .andExpect(status().isBadRequest());
         send(patch("/api/account/me").session(client.session), Map.of("nickname", "\u2003"))
                 .andExpect(status().isBadRequest());
+        for (String blank : List.of("\u00a0", "\u200b", "\u2060")) {
+            send(patch("/api/account/me").session(client.session), Map.of("nickname", blank))
+                    .andExpect(status().isBadRequest());
+        }
         send(patch("/api/account/me").session(client.session), Map.of("nickname", " 新昵称 "))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.nickname").value("新昵称"));
         JsonNode profile = read(mvc.perform(get("/api/users/{id}", client.id))
@@ -230,6 +234,18 @@ class AcceptanceFlowTests {
         assertFalse(profile.has("email"));
         assertFalse(profile.has("passwordHash"));
         assertFalse(profile.has("role"));
+    }
+
+    @Test
+    void invisibleNicknameCannotRegisterOrConsumeAValidCode() throws Exception {
+        String email = "invisible@mail.dhu.edu.cn";
+        requestCode(email);
+        for (String blank : List.of("\u00a0", "\u200b", "\u2060")) {
+            send(post("/api/auth/register"), registration(email, blank, deliveredCodes.get(email)))
+                    .andExpect(status().isBadRequest());
+        }
+        send(post("/api/auth/register"), registration(email, "有效昵称", deliveredCodes.get(email)))
+                .andExpect(status().isCreated());
     }
 
     @Test

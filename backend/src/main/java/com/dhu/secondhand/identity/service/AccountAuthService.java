@@ -5,6 +5,8 @@ import com.dhu.secondhand.account.dto.UserView;
 import com.dhu.secondhand.account.entity.User;
 import com.dhu.secondhand.account.mapper.UserMapper;
 import com.dhu.secondhand.common.ApiException;
+import com.dhu.secondhand.common.TextValidation;
+import com.dhu.secondhand.common.AbuseProtection;
 import com.dhu.secondhand.identity.dto.LoginRequest;
 import com.dhu.secondhand.identity.dto.RegisterRequest;
 import org.springframework.dao.DuplicateKeyException;
@@ -26,14 +28,16 @@ public class AccountAuthService {
     private final PasswordService passwords;
     private final VerificationCodeHasher codes;
     private final Clock clock;
+    private final AbuseProtection protection;
 
     public AccountAuthService(UserMapper users, JdbcTemplate jdbc, PasswordService passwords,
-                              VerificationCodeHasher codes, Clock clock) {
+                              VerificationCodeHasher codes, Clock clock, AbuseProtection protection) {
         this.users = users;
         this.jdbc = jdbc;
         this.passwords = passwords;
         this.codes = codes;
         this.clock = clock;
+        this.protection = protection;
     }
 
     // 业务拒绝前仅允许更新失败次数；必须提交该计数以防反复猜码。
@@ -42,7 +46,7 @@ public class AccountAuthService {
         String email = campusEmail(request.email());
         passwords.validate(request.password());
         String nickname = request.nickname().strip();
-        if (nickname.isEmpty() || nickname.length() > 50) {
+        if (TextValidation.isBlank(nickname) || nickname.length() > 50) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "昵称长度须为1至50个字符");
         }
         var rows = jdbc.query("""
@@ -88,6 +92,8 @@ public class AccountAuthService {
     public UserView login(LoginRequest request) {
         String email = campusEmail(request.email());
         User user = users.selectOne(Wrappers.<User>lambdaQuery().eq(User::getEmail, email));
+        // 以数据库中实际命中的账号计数，避免 MySQL 不区分重音的邮箱别名绕过账号限额。
+        protection.beforeLoginAccount(user == null ? email : user.getEmail());
         boolean matches = passwords.matches(request.password(), user == null ? null : user.getPasswordHash());
         if (user == null || !matches) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "邮箱或密码错误");
@@ -113,7 +119,6 @@ public class AccountAuthService {
         var session = request.getSession(true);
         session.setAttribute("userId", userId);
         session.setAttribute("sessionVersion", version);
-        session.setMaxInactiveInterval(1800);
         return UserView.from(user);
     }
 
