@@ -88,6 +88,22 @@ class RuntimeHttpTests {
         assertEquals(401,after.statusCode());
     }
 
+    @Test
+    void rejectsOversizedChunkedJsonAndReturnsApiErrorHeaders() throws Exception {
+        var client = HttpClient.newHttpClient();
+        var body = HttpRequest.BodyPublishers.ofInputStream(() -> new java.io.ByteArrayInputStream(new byte[65537]));
+        var tooLarge = client.send(HttpRequest.newBuilder(uri("/api/auth/login"))
+                .header("Content-Type", "application/json").POST(body).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(413, tooLarge.statusCode());
+        assertEquals("no-store", tooLarge.headers().firstValue("Cache-Control").orElseThrow());
+        assertEquals("请求体过大", json.readTree(tooLarge.body()).path("message").asText());
+        var wrongMethod = client.send(HttpRequest.newBuilder(uri("/api/auth/login")).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertEquals(405, wrongMethod.statusCode());
+        assertEquals("请求方法不支持", json.readTree(wrongMethod.body()).path("message").asText());
+        assertTrue(wrongMethod.headers().firstValue("Allow").orElseThrow().contains("POST"));
+    }
+
     private HttpResponse<String> post(HttpClient client, String path, Map<String,?> body) throws Exception {
         return client.send(HttpRequest.newBuilder(uri(path)).header("Content-Type","application/json")
                 .header("Origin","http://localhost:"+port).timeout(Duration.ofSeconds(15))

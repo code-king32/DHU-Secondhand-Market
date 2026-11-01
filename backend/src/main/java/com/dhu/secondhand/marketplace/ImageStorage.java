@@ -34,6 +34,8 @@ public class ImageStorage {
     private static final Logger log = LoggerFactory.getLogger(ImageStorage.class);
     private static final long MAX_BYTES = 5 * 1024 * 1024;
     private static final long MAX_PIXELS = 20_000_000;
+    private final java.util.concurrent.Semaphore decodeSlots;
+    private final com.dhu.secondhand.common.SessionAuth sessionAuth;
     private final Path directory;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
@@ -46,7 +48,11 @@ public class ImageStorage {
             JdbcTemplate jdbc, PlatformTransactionManager manager, Clock clock,
             @Value("${app.images.max-per-user:100}") int maxPerUser,
             @Value("${app.images.max-bytes-per-user:104857600}") long maxBytes,
-            @Value("${app.images.unused-retention-hours:24}") int retentionHours) {
+            @Value("${app.images.unused-retention-hours:24}") int retentionHours,
+            @Value("${app.images.max-concurrent-decodes:2}") int maxConcurrentDecodes,
+            com.dhu.secondhand.common.SessionAuth sessionAuth) {
+        this.sessionAuth = sessionAuth;
+        this.decodeSlots = new java.util.concurrent.Semaphore(Math.max(1, maxConcurrentDecodes));
         this.directory = Path.of(directory).toAbsolutePath().normalize();
         this.jdbc = jdbc;
         this.tx = new TransactionTemplate(manager);
@@ -57,6 +63,11 @@ public class ImageStorage {
     }
 
     public String store(long owner, MultipartFile file) {
+        if (!decodeSlots.tryAcquire()) throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "图片处理繁忙，请稍后重试");
+        try { return storeImage(owner, file); } finally { decodeSlots.release(); }
+    }
+
+    private String storeImage(long owner, MultipartFile file) {
         if (file.isEmpty()) throw invalid("请选择图片");
         if (file.getSize() > MAX_BYTES) {
             throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "每张图片不能超过 5 MB");
@@ -97,6 +108,7 @@ public class ImageStorage {
         }
         if (encoded.length > MAX_BYTES) throw invalid("图片重新编码后超过 5 MB，请压缩后再上传");
         Path path = resolve(name);
+        Path marker = directory.resolve(".pending-" + name);
         try {
             tx.executeWithoutResult(status -> {
                 lockOwner(owner, true);
@@ -110,16 +122,22 @@ public class ImageStorage {
                         name, owner, encoded.length, now, now);
                 try {
                     Files.createDirectories(directory);
+                    if (Files.exists(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                        throw new IOException("Image name already exists");
+                    }
+                    // 先持久化恢复标记，再写图片；旧版文件不会有该标记，不参与孤儿清理。
+                    Files.writeString(marker, Long.toString(owner), StandardOpenOption.CREATE_NEW);
                     Files.write(path, encoded, StandardOpenOption.CREATE_NEW);
                 } catch (IOException exception) {
                     throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "图片保存失败，请稍后重试");
                 }
             });
         } catch (RuntimeException exception) {
-            try { Files.deleteIfExists(path); }
-            catch (IOException cleanup) { log.warn("Could not remove failed image upload {}", name); }
+            // 提交结果可能不明确，保留标记，后台在确认数据库状态后再处理。
             throw exception;
         }
+        try { Files.deleteIfExists(marker); }
+        catch (IOException cleanup) { log.warn("Image upload marker will be reconciled {}", name); }
         return "/api/images/" + name;
     }
 
@@ -219,6 +237,41 @@ public class ImageStorage {
                 log.warn("Image cleanup will retry {}: {}", name, exception.getClass().getSimpleName());
             }
         }
+        reconcilePendingUploads();
+    }
+
+    private void reconcilePendingUploads() {
+        if (!Files.isDirectory(directory)) return;
+        var cutoff = clock.instant().minusSeconds((long) retentionHours * 3600);
+        try (var entries = Files.newDirectoryStream(directory, ".pending-*")) {
+            int processed = 0;
+            for (Path marker : entries) {
+                String file = marker.getFileName().toString();
+                String name = file.substring(".pending-".length());
+                if (!name.matches("[0-9a-f]{32}\\.(jpg|png)")) continue;
+                try {
+                    if (!Files.isRegularFile(marker, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                            || Files.getLastModifiedTime(marker, java.nio.file.LinkOption.NOFOLLOW_LINKS).toInstant().isAfter(cutoff)
+                            || Files.size(marker) > 20) continue;
+                    if (++processed > 200) break;
+                    long owner = Long.parseLong(Files.readString(marker));
+                    if (owner <= 0) continue;
+                    tx.executeWithoutResult(status -> {
+                        // 与上传采用相同的账号锁顺序；等待中的上传提交后再检查记录。
+                        lockOwner(owner, false);
+                        var exists = jdbc.queryForList("SELECT name FROM app_uploaded_image WHERE name=? FOR UPDATE", String.class, name);
+                        try {
+                            if (exists.isEmpty()) Files.deleteIfExists(resolve(name));
+                            Files.deleteIfExists(marker);
+                        } catch (IOException exception) { throw new java.io.UncheckedIOException(exception); }
+                    });
+                } catch (IOException | RuntimeException exception) {
+                    log.warn("Pending image reconciliation will retry {}: {}", name, exception.getClass().getSimpleName());
+                }
+            }
+        } catch (IOException exception) {
+            log.warn("Could not scan pending image uploads: {}", exception.getClass().getSimpleName());
+        }
     }
 
     private void lockOwner(long owner, boolean requireActive) {
@@ -227,6 +280,7 @@ public class ImageStorage {
         if (requireActive && (states.isEmpty() || !states.get(0))) {
             throw new ApiException(HttpStatus.FORBIDDEN, "账号当前不可用");
         }
+        if (requireActive) sessionAuth.verifyLockedActor(owner);
     }
 
     private LocalDateTime now() { return LocalDateTime.now(clock).withNano(0); }

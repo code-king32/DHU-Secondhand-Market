@@ -4,6 +4,8 @@ import com.dhu.secondhand.account.dto.UserView;
 import com.dhu.secondhand.account.mapper.UserMapper;
 import com.dhu.secondhand.account.service.AccountClosureGuard;
 import com.dhu.secondhand.common.ApiException;
+import com.dhu.secondhand.common.AbuseProtection;
+import com.dhu.secondhand.common.ClientIpResolver;
 import com.dhu.secondhand.common.SessionAuth;
 import com.dhu.secondhand.common.TextValidation;
 import com.dhu.secondhand.identity.service.PasswordService;
@@ -24,6 +26,8 @@ import java.util.List;
 @RequestMapping("/api")
 public class AccountController {
     private final SessionAuth auth;
+    private final AbuseProtection protection;
+    private final ClientIpResolver clientIps;
     private final UserMapper users;
     private final JdbcTemplate jdbc;
     private final PasswordService passwords;
@@ -32,9 +36,9 @@ public class AccountController {
 
     public AccountController(SessionAuth auth, UserMapper users, JdbcTemplate jdbc,
                              PasswordService passwords, List<AccountClosureGuard> guards,
-                             TransactionTemplate transactions) {
+                             TransactionTemplate transactions, AbuseProtection protection, ClientIpResolver clientIps) {
         this.auth=auth; this.users=users; this.jdbc=jdbc; this.passwords=passwords;
-        this.guards=guards; this.transactions=transactions;
+        this.guards=guards; this.transactions=transactions; this.protection=protection; this.clientIps=clientIps;
     }
 
     public record ProfileRequest(@NotBlank @Size(max=50) String nickname) { }
@@ -59,6 +63,7 @@ public class AccountController {
     @DeleteMapping("/account/me")
     public ResponseEntity<Void> close(@Valid @RequestBody CloseRequest body, HttpServletRequest request) {
         long id = auth.requireUserId(request);
+        protection.beforeAccountClosure(clientIps.resolve(request), id);
         transactions.executeWithoutResult(transaction -> {
             jdbc.queryForObject("SELECT id FROM app_user WHERE id=? FOR UPDATE", Long.class, id);
             // 等待账号锁期间可能发生禁用、注销或会话撤销，必须在锁内重新校验。

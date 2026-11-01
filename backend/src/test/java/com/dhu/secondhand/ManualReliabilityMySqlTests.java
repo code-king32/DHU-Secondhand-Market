@@ -91,7 +91,7 @@ class ManualReliabilityMySqlTests {
                 assertEquals("SENT", deliveries.status(id).status());
                 verify(mail, times(2)).sendVerificationCode("test@mail.dhu.edu.cn", "123456");
 
-                var images = new ImageStorage(directory.resolve("images").toString(), jdbc, manager, clock, 2, 1024, 24);
+                var images = new ImageStorage(directory.resolve("images").toString(), jdbc, manager, clock, 2, 1024, 24, 2, new com.dhu.secondhand.common.SessionAuth(jdbc));
                 var bytes = new ByteArrayOutputStream();
                 ImageIO.write(new BufferedImage(4, 4, BufferedImage.TYPE_INT_RGB), "png", bytes);
                 String url = images.store(1, new MockMultipartFile("file", "a.png", "image/png", bytes.toByteArray()));

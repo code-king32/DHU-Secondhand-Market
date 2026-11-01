@@ -35,6 +35,17 @@ class AbuseProtectionTests {
     }
 
     @Test
+    void closureBudgetIsScopedToAccountAndIpAndExpires() {
+        var protection = protection(3, 2, 10, 100);
+        protection.beforeAccountClosure("ip-1", 1);
+        protection.beforeAccountClosure("ip-2", 1);
+        assertThrows(RateLimitException.class, () -> protection.beforeAccountClosure("ip-3", 1));
+        assertDoesNotThrow(() -> protection.beforeAccountClosure("ip-3", 2));
+        when(clock.instant()).thenReturn(now.plusSeconds(60));
+        assertDoesNotThrow(() -> protection.beforeAccountClosure("ip-1", 1));
+    }
+
+    @Test
     void successfulLoginResetsAccountFailuresButDoesNotResetIpBudget() {
         var protection = protection(2, 1, 10, 100);
         protection.beforeLogin("ip-1", "student@mail.dhu.edu.cn");

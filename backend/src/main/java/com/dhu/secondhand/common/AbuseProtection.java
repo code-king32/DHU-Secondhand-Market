@@ -57,6 +57,11 @@ public class AbuseProtection {
         buckets.remove("login-account:" + digest(normalize(email)));
     }
 
+    public synchronized void beforeAccountClosure(String ip, long userId) {
+        if (enabled) consume(new Rule("close-ip:" + digest(ip), loginIp, loginWindow),
+                new Rule("close-account:" + userId, loginAccount, loginWindow));
+    }
+
     public synchronized void beforeMail(String ip, String email) {
         if (!enabled) return;
         consume(new Rule("mail-hour:" + digest(ip), mailHour, 3600),

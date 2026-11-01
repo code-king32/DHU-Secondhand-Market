@@ -52,6 +52,16 @@ class AbuseProtectionHttpTests {
     }
 
     @Test
+    void oversizedJsonIsRejectedAndApiResponsesAreNotCached() throws Exception {
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content("x".repeat(65537)))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.message").value("请求体过大"));
+        verify(accounts, never()).login(any());
+    }
+
+    @Test
     void mailIpLimitRejectsBeforeCreatingAnotherDelivery() throws Exception {
         when(registration.send(any())).thenReturn(new SendRegistrationCodeResponse("验证码已发送", 300, 60,
                 "00000000000000000000000000000000", "SENT"));
