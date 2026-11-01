@@ -22,11 +22,13 @@ import static com.dhu.secondhand.marketplace.MarketDtos.*;
 @Service
 public class MarketplaceService {
     private static final Set<String> CATEGORIES = Set.of("TEXTBOOK", "ELECTRONICS", "DAILY", "CLOTHING", "OTHER");
+    private final com.dhu.secondhand.common.SessionAuth sessionAuth;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final ImageStorage imageStorage;
 
-    public MarketplaceService(JdbcTemplate jdbc, ObjectMapper json, ImageStorage imageStorage) {
+    public MarketplaceService(JdbcTemplate jdbc, ObjectMapper json, ImageStorage imageStorage, com.dhu.secondhand.common.SessionAuth sessionAuth) {
+        this.sessionAuth = sessionAuth;
         this.jdbc = jdbc;
         this.json = json;
         this.imageStorage = imageStorage;
@@ -310,6 +312,7 @@ public class MarketplaceService {
         long high = Math.max(first, second);
         lockAccount(low, actor, requireBothActive);
         if (high != low) lockAccount(high, actor, requireBothActive);
+        if (actor == low || actor == high) sessionAuth.verifyLockedActor(actor);
     }
 
     private void lockAccount(long userId, long actor, boolean requireActive) {

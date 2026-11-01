@@ -39,6 +39,19 @@ public class ApiExceptionHandler {
         return ResponseEntity.badRequest().body(new ErrorResponse("请求参数不正确"));
     }
 
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> methodNotAllowed(org.springframework.web.HttpRequestMethodNotSupportedException exception) {
+        var methods = exception.getSupportedHttpMethods();
+        var builder = ResponseEntity.status(405);
+        if (methods != null) builder.allow(methods.toArray(org.springframework.http.HttpMethod[]::new));
+        return builder.body(new ErrorResponse("请求方法不支持"));
+    }
+
+    @ExceptionHandler(org.springframework.web.HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> unsupportedMedia(org.springframework.web.HttpMediaTypeNotSupportedException exception) {
+        return ResponseEntity.status(415).body(new ErrorResponse("请求内容类型不支持"));
+    }
+
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ErrorResponse> uploadTooLarge(MaxUploadSizeExceededException exception) {
         return ResponseEntity.status(413).body(new ErrorResponse("每张图片不能超过 5 MB"));

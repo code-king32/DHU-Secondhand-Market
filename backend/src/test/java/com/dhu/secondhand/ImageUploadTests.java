@@ -69,6 +69,7 @@ class ImageUploadTests {
     @MockitoBean Clock clock;
     @Autowired JdbcTemplate jdbc;
     @Autowired ImageStorage storage;
+    @Autowired org.springframework.transaction.support.TransactionTemplate transactions;
     private static final Instant NOW = Instant.parse("2026-10-28T04:00:00Z");
 
     @BeforeEach
@@ -325,6 +326,65 @@ class ImageUploadTests {
 
     private Map<String, Object> goods(String... urls) {
         return Map.of("title", "图片商品", "description", "描述", "price", "1.00", "imageUrls", List.of(urls));
+    }
+
+    @Test
+    void pendingUploadsAreReconciledWithoutDeletingLegacyOrCommittedImages() throws Exception {
+        String orphan = "a".repeat(32) + ".png";
+        String committed = "b".repeat(32) + ".png";
+        String legacy = "c".repeat(32) + ".png";
+        String recent = "d".repeat(32) + ".png";
+        for (String name : List.of(orphan, committed, legacy, recent)) Files.write(directory.resolve(name), new byte[]{1});
+        for (String name : List.of(orphan, committed, recent)) {
+            Path marker = directory.resolve(".pending-" + name);
+            Files.writeString(marker, "1");
+            Files.setLastModifiedTime(marker, java.nio.file.attribute.FileTime.from(
+                    name.equals(recent) ? NOW : NOW.minusSeconds(25 * 3600)));
+        }
+        jdbc.update("INSERT INTO app_uploaded_image(name,owner_id,byte_size,created_at,unused_since,status) VALUES(?,1,1,?,NULL,'ACTIVE')",
+                committed, java.time.LocalDateTime.of(2026, 10, 28, 12, 0));
+        storage.cleanupUnused();
+        assertFalse(Files.exists(directory.resolve(orphan)));
+        assertFalse(Files.exists(directory.resolve(".pending-" + orphan)));
+        assertTrue(Files.exists(directory.resolve(committed)));
+        assertFalse(Files.exists(directory.resolve(".pending-" + committed)));
+        assertTrue(Files.exists(directory.resolve(legacy)));
+        assertTrue(Files.exists(directory.resolve(recent)));
+        assertTrue(Files.exists(directory.resolve(".pending-" + recent)));
+    }
+
+    @Test
+    void pendingCleanupWaitsForUploadTransactionBeforeCheckingDatabase() throws Exception {
+        String name = "e".repeat(32) + ".png";
+        Path marker = directory.resolve(".pending-" + name);
+        Files.write(directory.resolve(name), new byte[]{1});
+        Files.writeString(marker, "1");
+        Files.setLastModifiedTime(marker, java.nio.file.attribute.FileTime.from(NOW.minusSeconds(25 * 3600)));
+        var locked = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var started = new java.util.concurrent.CountDownLatch(1);
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var upload = pool.submit(() -> transactions.executeWithoutResult(status -> {
+                jdbc.queryForObject("SELECT id FROM app_user WHERE id=1 FOR UPDATE", Long.class);
+                jdbc.update("INSERT INTO app_uploaded_image(name,owner_id,byte_size,created_at,unused_since,status) VALUES(?,1,1,?,NULL,'ACTIVE')",
+                        name, java.time.LocalDateTime.of(2026, 10, 28, 12, 0));
+                locked.countDown();
+                try {
+                    if (!release.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("timeout");
+                } catch (InterruptedException ex) { Thread.currentThread().interrupt(); throw new IllegalStateException(ex); }
+            }));
+            assertTrue(locked.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            var cleanup = pool.submit(() -> { started.countDown(); storage.cleanupUnused(); });
+            assertTrue(started.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            assertThrows(java.util.concurrent.TimeoutException.class,
+                    () -> cleanup.get(200, java.util.concurrent.TimeUnit.MILLISECONDS));
+            release.countDown();
+            upload.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            cleanup.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            assertTrue(Files.exists(directory.resolve(name)));
+            assertFalse(Files.exists(marker));
+        } finally { release.countDown(); pool.shutdownNow(); }
     }
 
     private MockHttpSession session(long user) {

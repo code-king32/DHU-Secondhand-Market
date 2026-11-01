@@ -22,9 +22,11 @@ import java.util.Set;
 public class CommunityService {
 
     private static final Set<String> CATEGORIES = Set.of("TEXTBOOK", "ELECTRONICS", "DAILY", "CLOTHING", "OTHER");
+    private final com.dhu.secondhand.common.SessionAuth sessionAuth;
     private final JdbcTemplate jdbc;
 
-    public CommunityService(JdbcTemplate jdbc) {
+    public CommunityService(JdbcTemplate jdbc, com.dhu.secondhand.common.SessionAuth sessionAuth) {
+        this.sessionAuth = sessionAuth;
         this.jdbc = jdbc;
     }
 
@@ -301,6 +303,7 @@ public class CommunityService {
             if (id == actor && (user.status() != 0 || user.verified() != 1)) throw forbidden("账号当前不可用");
             if (id == actor && adminRequired && !"ADMIN".equals(user.role())) throw forbidden("需要管理员权限");
         }
+        sessionAuth.verifyLockedActor(actor);
         return targetState;
     }
 
