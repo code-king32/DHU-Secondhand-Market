@@ -3,37 +3,26 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { listGoods, type Goods } from '@/api/goods'
 import { CATEGORY_LABELS } from '@/constants'
+import { usePageList } from '@/composables/usePageList'
+import LoadError from '@/components/LoadError.vue'
 
 const router = useRouter()
-const goods = ref<Goods[]>([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(12)
 const keyword = ref('')
 const category = ref('')
-const loading = ref(false)
+const { items: goods, total, page, size, loading, error, load, reset } = usePageList<Goods>(
+  (page, size) => listGoods({
+    keyword: keyword.value || undefined,
+    category: category.value || undefined,
+    page,
+    size,
+  }),
+  { size: 12 },
+)
 
 const categories = Object.entries(CATEGORY_LABELS)
 
-async function load() {
-  loading.value = true
-  try {
-    const data = await listGoods({
-      keyword: keyword.value || undefined,
-      category: category.value || undefined,
-      page: page.value,
-      size: size.value,
-    })
-    goods.value = data.items
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
-}
-
 function search() {
-  page.value = 1
-  load()
+  reset()
 }
 
 onMounted(load)
@@ -55,7 +44,8 @@ onMounted(load)
       <el-button type="primary" @click="search">搜索</el-button>
     </div>
 
-    <el-row :gutter="16">
+    <LoadError v-if="error" @retry="load" />
+    <el-row v-else-if="goods.length" :gutter="16">
       <el-col v-for="item in goods" :key="item.id" :span="6">
         <el-card class="goods-card" @click="router.push(`/goods/${item.id}`)">
           <template #header>{{ item.title }}</template>
@@ -64,7 +54,7 @@ onMounted(load)
         </el-card>
       </el-col>
     </el-row>
-    <el-empty v-if="!loading && goods.length === 0" description="暂无在售商品" />
+    <el-empty v-else-if="!loading" description="暂无在售商品" />
 
     <el-pagination
       v-model:current-page="page"

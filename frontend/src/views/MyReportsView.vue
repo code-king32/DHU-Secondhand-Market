@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { onMounted, reactive, ref } from 'vue'
+import { ElMessage, type FormInstance } from 'element-plus'
 import {
   listMyReports,
   createAppeal,
@@ -14,47 +14,36 @@ import {
   TARGET_TYPE_LABELS,
   reportStatusTag,
 } from '@/constants'
+import { usePageList } from '@/composables/usePageList'
+import LoadError from '@/components/LoadError.vue'
+import { textRules, isValid } from '@/utils/validate'
 
-const rows = ref<Report[]>([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(20)
-const loading = ref(false)
+const { items: rows, total, page, size, loading, error, load } = usePageList<Report>(
+  (page, size) => listMyReports({ page, size }),
+)
 
 const appealVisible = ref(false)
-const appealReason = ref('')
+const appealForm = reactive({ reason: '' })
+const appealFormRef = ref<FormInstance>()
+const appealRules = { reason: textRules(1000, '请填写申诉理由') }
 const current = ref<Report | null>(null)
 const appealSaving = ref(false)
 
 const appealsVisible = ref(false)
 const appeals = ref<Appeal[]>([])
 
-async function load() {
-  loading.value = true
-  try {
-    const data = await listMyReports({ page: page.value, size: size.value })
-    rows.value = data.items
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
-}
-
 function openAppeal(r: Report) {
   current.value = r
-  appealReason.value = ''
+  appealForm.reason = ''
   appealVisible.value = true
 }
 
 async function submitAppeal() {
   if (!current.value) return
-  if (!appealReason.value.trim()) {
-    ElMessage.warning('请填写申诉理由')
-    return
-  }
+  if (!(await isValid(appealFormRef.value))) return
   appealSaving.value = true
   try {
-    await createAppeal(current.value.id, appealReason.value.trim())
+    await createAppeal(current.value.id, appealForm.reason.trim())
     ElMessage.success('申诉已提交')
     appealVisible.value = false
     load()
@@ -80,7 +69,8 @@ onMounted(load)
 <template>
   <el-card>
     <template #header>我的举报</template>
-    <el-table :data="rows" v-loading="loading" border>
+    <LoadError v-if="error" @retry="load" />
+    <el-table v-else :data="rows" v-loading="loading" border>
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column label="对象" width="120">
         <template #default="{ row }">
@@ -112,7 +102,11 @@ onMounted(load)
     />
 
     <el-dialog v-model="appealVisible" title="提交申诉" width="480px">
-      <el-input v-model="appealReason" type="textarea" :rows="4" maxlength="1000" placeholder="申诉理由" />
+      <el-form ref="appealFormRef" :model="appealForm" :rules="appealRules">
+        <el-form-item prop="reason">
+          <el-input v-model="appealForm.reason" type="textarea" :rows="4" maxlength="1000" placeholder="申诉理由" />
+        </el-form-item>
+      </el-form>
       <template #footer>
         <el-button @click="appealVisible = false">取消</el-button>
         <el-button type="primary" :loading="appealSaving" @click="submitAppeal">提交</el-button>

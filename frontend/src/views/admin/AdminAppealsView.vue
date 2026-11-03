@@ -1,35 +1,26 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, type FormInstance } from 'element-plus'
 import { listAdminAppeals, resolveAppeal, type Appeal } from '@/api/community'
 import { APPEAL_STATUS_LABELS, reportStatusTag } from '@/constants'
+import { usePageList } from '@/composables/usePageList'
+import LoadError from '@/components/LoadError.vue'
+import { textRules, isValid } from '@/utils/validate'
 
-const rows = ref<Appeal[]>([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(20)
 const status = ref('')
-const loading = ref(false)
+const { items: rows, total, page, size, loading, error, load, reset } = usePageList<Appeal>(
+  (page, size) => listAdminAppeals({ status: status.value || undefined, page, size }),
+)
 
 const resolveVisible = ref(false)
 const current = ref<Appeal | null>(null)
 const resolving = ref(false)
 const form = reactive({ decision: 'UPHELD', note: '' })
-
-async function load() {
-  loading.value = true
-  try {
-    const data = await listAdminAppeals({ status: status.value || undefined, page: page.value, size: size.value })
-    rows.value = data.items
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
-}
+const formRef = ref<FormInstance>()
+const rules = { note: textRules(1000, '请填写处理说明') }
 
 function filterStatus() {
-  page.value = 1
-  load()
+  reset()
 }
 
 function openResolve(a: Appeal) {
@@ -41,10 +32,7 @@ function openResolve(a: Appeal) {
 
 async function submitResolve() {
   if (!current.value) return
-  if (!form.note.trim()) {
-    ElMessage.warning('请填写处理说明')
-    return
-  }
+  if (!(await isValid(formRef.value))) return
   resolving.value = true
   try {
     await resolveAppeal(current.value.id, { decision: form.decision, note: form.note.trim() })
@@ -73,7 +61,8 @@ onMounted(load)
         </el-select>
       </div>
     </template>
-    <el-table :data="rows" v-loading="loading" border>
+    <LoadError v-if="error" @retry="load" />
+    <el-table v-else :data="rows" v-loading="loading" border>
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="reportId" label="举报号" width="90" />
       <el-table-column prop="reason" label="申诉理由" min-width="200" />
@@ -100,14 +89,14 @@ onMounted(load)
     />
 
     <el-dialog v-model="resolveVisible" title="处理申诉" width="520px">
-      <el-form label-width="100px">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="处理结果">
           <el-radio-group v-model="form.decision">
             <el-radio value="UPHELD">成立（重新核查）</el-radio>
             <el-radio value="REJECTED">驳回</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="处理说明">
+        <el-form-item label="处理说明" prop="note">
           <el-input v-model="form.note" type="textarea" :rows="4" maxlength="1000" />
         </el-form-item>
       </el-form>
