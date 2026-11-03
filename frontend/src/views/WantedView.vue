@@ -1,43 +1,30 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, type FormInstance } from 'element-plus'
 import { listWanted, createWanted, closeWanted, type Wanted } from '@/api/community'
 import { useAuthStore } from '@/stores/auth'
 import { CATEGORY_LABELS } from '@/constants'
+import { usePageList } from '@/composables/usePageList'
+import LoadError from '@/components/LoadError.vue'
+import { TITLE_RULES, WANTED_DESCRIPTION_RULES, isValid } from '@/utils/validate'
 
 const auth = useAuthStore()
-const rows = ref<Wanted[]>([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(12)
 const q = ref('')
 const category = ref('')
-const loading = ref(false)
+const { items: rows, total, page, size, loading, error, load, reset } = usePageList<Wanted>(
+  (page, size) => listWanted({ q: q.value || undefined, category: category.value || undefined, page, size }),
+  { size: 12 },
+)
 
 const dialogVisible = ref(false)
 const saving = ref(false)
 const form = reactive({ title: '', description: '', maxPrice: 0, category: 'OTHER' })
+const formRef = ref<FormInstance>()
+const rules = { title: TITLE_RULES, description: WANTED_DESCRIPTION_RULES }
 const categories = Object.entries(CATEGORY_LABELS)
 
-async function load() {
-  loading.value = true
-  try {
-    const data = await listWanted({
-      q: q.value || undefined,
-      category: category.value || undefined,
-      page: page.value,
-      size: size.value,
-    })
-    rows.value = data.items
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
-}
-
 function search() {
-  page.value = 1
-  load()
+  reset()
 }
 
 function openCreate() {
@@ -53,10 +40,7 @@ function openCreate() {
 }
 
 async function submit() {
-  if (!form.title.trim() || !form.description.trim()) {
-    ElMessage.warning('请填写标题和描述')
-    return
-  }
+  if (!(await isValid(formRef.value))) return
   saving.value = true
   try {
     await createWanted({
@@ -99,7 +83,8 @@ onMounted(load)
       <el-button @click="openCreate">发布求购</el-button>
     </div>
 
-    <el-row :gutter="16">
+    <LoadError v-if="error" @retry="load" />
+    <el-row v-else-if="rows.length" :gutter="16">
       <el-col v-for="w in rows" :key="w.id" :span="6">
         <el-card class="wanted-card">
           <template #header>{{ w.title }}</template>
@@ -117,7 +102,7 @@ onMounted(load)
         </el-card>
       </el-col>
     </el-row>
-    <el-empty v-if="!loading && rows.length === 0" description="暂无求购" />
+    <el-empty v-else-if="!loading" description="暂无求购" />
 
     <el-pagination
       v-model:current-page="page"
@@ -129,19 +114,19 @@ onMounted(load)
     />
 
     <el-dialog v-model="dialogVisible" title="发布求购" width="480px">
-      <el-form label-width="80px">
-        <el-form-item label="标题">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
+        <el-form-item label="标题" prop="title">
           <el-input v-model="form.title" maxlength="100" />
         </el-form-item>
-        <el-form-item label="预算">
+        <el-form-item label="预算" prop="maxPrice">
           <el-input-number v-model="form.maxPrice" :min="0" :max="9999999.99" :precision="2" :step="1" />
         </el-form-item>
-        <el-form-item label="分类">
+        <el-form-item label="分类" prop="category">
           <el-select v-model="form.category" style="width: 100%">
             <el-option v-for="[value, label] in categories" :key="value" :label="label" :value="value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="描述">
+        <el-form-item label="描述" prop="description">
           <el-input v-model="form.description" type="textarea" :rows="4" maxlength="2000" />
         </el-form-item>
       </el-form>

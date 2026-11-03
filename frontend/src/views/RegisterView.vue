@@ -2,11 +2,19 @@
 import { onUnmounted, reactive, ref } from 'vue'
 import { isAxiosError } from 'axios'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, type FormInstance } from 'element-plus'
 import { sendRegistrationCode, getRegistrationCodeStatus, register } from '@/api/auth'
+import { EMAIL_RULES, CODE_RULES, REGISTER_PASSWORD_RULES, NICKNAME_RULES, isValid, isValidField } from '@/utils/validate'
 
 const router = useRouter()
 const form = reactive({ email: '', code: '', password: '', nickname: '' })
+const formRef = ref<FormInstance>()
+const rules = {
+  email: EMAIL_RULES,
+  code: CODE_RULES,
+  password: REGISTER_PASSWORD_RULES,
+  nickname: NICKNAME_RULES,
+}
 const loading = ref(false)
 const sending = ref(false)
 const countdown = ref(0)
@@ -42,10 +50,7 @@ function pollDelivery(id: string, remaining = 24) {
 }
 
 async function sendCode() {
-  if (!form.email) {
-    ElMessage.warning('请先填写校园邮箱')
-    return
-  }
+  if (!(await isValidField(formRef.value, 'email'))) return
   sending.value = true
   clearTimeout(pollTimer)
   activeDelivery = ''
@@ -86,14 +91,7 @@ function startCountdown(seconds: number) {
 }
 
 async function submit() {
-  if (!form.email || !form.code || !form.password || !form.nickname) {
-    ElMessage.warning('请填写完整信息')
-    return
-  }
-  if (form.password.length < 8) {
-    ElMessage.warning('密码至少 8 位')
-    return
-  }
+  if (!(await isValid(formRef.value))) return
   loading.value = true
   try {
     await register({ ...form })
@@ -111,11 +109,11 @@ async function submit() {
   <div class="wrap">
     <el-card class="card">
       <h2>注册</h2>
-      <el-form label-width="90px">
-        <el-form-item label="校园邮箱">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
+        <el-form-item label="校园邮箱" prop="email">
           <el-input v-model="form.email" placeholder="xxx@mail.dhu.edu.cn" />
         </el-form-item>
-        <el-form-item label="验证码">
+        <el-form-item label="验证码" prop="code">
           <div class="code-row">
             <el-input v-model="form.code" placeholder="6 位数字" />
             <el-button :disabled="countdown > 0" :loading="sending" @click="sendCode">
@@ -124,10 +122,10 @@ async function submit() {
           </div>
         </el-form-item>
         <p v-if="deliveryMessage" class="delivery-message" role="status">{{ deliveryMessage }}</p>
-        <el-form-item label="密码">
+        <el-form-item label="密码" prop="password">
           <el-input v-model="form.password" type="password" show-password placeholder="至少 8 位" />
         </el-form-item>
-        <el-form-item label="昵称">
+        <el-form-item label="昵称" prop="nickname">
           <el-input v-model="form.nickname" placeholder="你的昵称" />
         </el-form-item>
         <el-button type="primary" :loading="loading" @click="submit">注册</el-button>

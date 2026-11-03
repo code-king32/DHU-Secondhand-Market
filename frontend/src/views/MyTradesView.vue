@@ -4,30 +4,18 @@ import { useRouter } from 'vue-router'
 import { listTrades, type Trade } from '@/api/trades'
 import { useAuthStore } from '@/stores/auth'
 import { TRADE_STATUS_LABELS, tradeStatusTag } from '@/constants'
+import { usePageList } from '@/composables/usePageList'
+import LoadError from '@/components/LoadError.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
 const role = ref<string | number>('ALL')
-const rows = ref<Trade[]>([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(20)
-const loading = ref(false)
-
-async function load() {
-  loading.value = true
-  try {
-    const data = await listTrades({ role: String(role.value), page: page.value, size: size.value })
-    rows.value = data.items
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
-}
+const { items: rows, total, page, size, loading, error, load, reset } = usePageList<Trade>(
+  (page, size) => listTrades({ role: String(role.value), page, size }),
+)
 
 function onTabChange() {
-  page.value = 1
-  load()
+  reset()
 }
 
 function myRole(t: Trade) {
@@ -45,7 +33,8 @@ onMounted(load)
       <el-tab-pane label="买入" name="BUYER" />
       <el-tab-pane label="卖出" name="SELLER" />
     </el-tabs>
-    <el-table :data="rows" v-loading="loading" border>
+    <LoadError v-if="error" @retry="load" />
+    <el-table v-else :data="rows" v-loading="loading" border>
       <el-table-column prop="id" label="交易号" width="90" />
       <el-table-column prop="goodsId" label="商品号" width="90" />
       <el-table-column label="身份" width="80">

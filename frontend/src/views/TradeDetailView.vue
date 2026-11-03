@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, type FormInstance } from 'element-plus'
 import { getTrade, acceptTrade, confirmTrade, cancelTrade, type Trade } from '@/api/trades'
 import { getGoods, type Goods } from '@/api/goods'
 import { createReview } from '@/api/community'
 import { useAuthStore } from '@/stores/auth'
 import { TRADE_STATUS_LABELS, tradeStatusTag } from '@/constants'
+import { textRules, isValid } from '@/utils/validate'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,7 +19,9 @@ const loading = ref(false)
 
 const reviewVisible = ref(false)
 const rating = ref(5)
-const comment = ref('')
+const reviewForm = reactive({ comment: '' })
+const reviewFormRef = ref<FormInstance>()
+const reviewRules = { comment: textRules(1000, '请填写评价内容') }
 const submitting = ref(false)
 
 const isBuyer = computed(() => auth.user?.id === trade.value?.buyerId)
@@ -50,9 +53,10 @@ async function act(fn: () => Promise<Trade>, msg: string) {
 }
 
 async function submitReview() {
+  if (!(await isValid(reviewFormRef.value))) return
   submitting.value = true
   try {
-    await createReview({ tradeId: id, rating: rating.value, comment: comment.value })
+    await createReview({ tradeId: id, rating: rating.value, comment: reviewForm.comment.trim() })
     ElMessage.success('评价已提交')
     reviewVisible.value = false
   } catch {
@@ -114,7 +118,11 @@ onMounted(load)
     <el-dialog v-model="reviewVisible" title="评价交易" width="480px">
       <div class="review-form">
         <p>评分：<el-rate v-model="rating" /></p>
-        <el-input v-model="comment" type="textarea" :rows="4" maxlength="1000" placeholder="评价内容" />
+        <el-form ref="reviewFormRef" :model="reviewForm" :rules="reviewRules">
+          <el-form-item prop="comment">
+            <el-input v-model="reviewForm.comment" type="textarea" :rows="4" maxlength="1000" placeholder="评价内容" />
+          </el-form-item>
+        </el-form>
       </div>
       <template #footer>
         <el-button @click="reviewVisible = false">取消</el-button>

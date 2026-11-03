@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, type FormInstance } from 'element-plus'
 import {
   listAdminReports,
   resolveReport,
@@ -14,18 +14,21 @@ import {
   TARGET_TYPE_LABELS,
   reportStatusTag,
 } from '@/constants'
+import { usePageList } from '@/composables/usePageList'
+import LoadError from '@/components/LoadError.vue'
+import { textRules, isValid } from '@/utils/validate'
 
-const rows = ref<Report[]>([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(20)
 const status = ref('')
-const loading = ref(false)
+const { items: rows, total, page, size, loading, error, load, reset } = usePageList<Report>(
+  (page, size) => listAdminReports({ status: status.value || undefined, page, size }),
+)
 
 const resolveVisible = ref(false)
 const current = ref<Report | null>(null)
 const resolving = ref(false)
 const form = reactive({ decision: 'RESOLVED', note: '', action: 'NONE' })
+const formRef = ref<FormInstance>()
+const rules = { note: textRules(1000, '请填写处理说明') }
 
 watch(() => form.decision, (decision) => {
   if (decision !== 'RESOLVED') form.action = 'NONE'
@@ -37,20 +40,8 @@ const audits = ref<Audit[]>([])
 const statusUserId = ref<number | null>(null)
 const statusSaving = ref(false)
 
-async function load() {
-  loading.value = true
-  try {
-    const data = await listAdminReports({ status: status.value || undefined, page: page.value, size: size.value })
-    rows.value = data.items
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
-}
-
 function filterStatus() {
-  page.value = 1
-  load()
+  reset()
 }
 
 function actionOptions() {
@@ -80,10 +71,7 @@ function openResolve(r: Report) {
 
 async function submitResolve() {
   if (!current.value) return
-  if (!form.note.trim()) {
-    ElMessage.warning('请填写处理说明')
-    return
-  }
+  if (!(await isValid(formRef.value))) return
   resolving.value = true
   try {
     await resolveReport(current.value.id, {
@@ -151,7 +139,8 @@ onMounted(load)
         </el-select>
       </div>
     </template>
-    <el-table :data="rows" v-loading="loading" border>
+    <LoadError v-if="error" @retry="load" />
+    <el-table v-else :data="rows" v-loading="loading" border>
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column label="对象" width="130">
         <template #default="{ row }">
@@ -183,7 +172,7 @@ onMounted(load)
     />
 
     <el-dialog v-model="resolveVisible" title="处理举报" width="520px">
-      <el-form label-width="100px">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="处理结果">
           <el-radio-group v-model="form.decision">
             <el-radio value="RESOLVED">成立</el-radio>
@@ -195,7 +184,7 @@ onMounted(load)
             <el-option v-for="o in actionOptions()" :key="o.value" :label="o.label" :value="o.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="处理说明">
+        <el-form-item label="处理说明" prop="note">
           <el-input v-model="form.note" type="textarea" :rows="4" maxlength="1000" />
         </el-form-item>
       </el-form>
