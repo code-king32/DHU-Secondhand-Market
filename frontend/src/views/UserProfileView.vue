@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { getUser, type PublicProfile } from '@/api/auth'
 import { getReputation, listReviews, type Reputation, type Review } from '@/api/community'
+import LoadError from '@/components/LoadError.vue'
 
 const route = useRoute()
 const id = Number(route.params.id)
@@ -13,15 +14,19 @@ const total = ref(0)
 const page = ref(1)
 const size = ref(10)
 const loading = ref(false)
+const error = ref(false)
 
 async function load() {
   loading.value = true
+  error.value = false
   try {
     profile.value = await getUser(id)
     reputation.value = await getReputation(id)
     const data = await listReviews(id, { page: page.value, size: size.value })
     reviews.value = data.items
     total.value = data.total
+  } catch {
+    error.value = true
   } finally {
     loading.value = false
   }
@@ -32,7 +37,8 @@ onMounted(load)
 
 <template>
   <div v-loading="loading">
-    <el-card v-if="profile">
+    <LoadError v-if="error" @retry="load" />
+    <el-card v-if="profile && !error">
       <template #header>用户资料</template>
       <el-descriptions :column="2" border>
         <el-descriptions-item label="昵称">{{ profile.nickname }}</el-descriptions-item>
@@ -44,7 +50,7 @@ onMounted(load)
       </el-descriptions>
     </el-card>
 
-    <el-card class="reviews">
+    <el-card v-if="!error" class="reviews">
       <template #header>收到的评价</template>
       <el-empty v-if="!loading && reviews.length === 0" description="暂无评价" />
       <div v-for="r in reviews" :key="r.id" class="review">

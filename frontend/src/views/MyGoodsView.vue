@@ -1,27 +1,16 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listMyGoods, shelfGoods, type Goods } from '@/api/goods'
 import { CATEGORY_LABELS, GOODS_STATUS_LABELS, goodsStatusTag } from '@/constants'
+import { usePageList } from '@/composables/usePageList'
+import LoadError from '@/components/LoadError.vue'
 
 const router = useRouter()
-const rows = ref<Goods[]>([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(20)
-const loading = ref(false)
-
-async function load() {
-  loading.value = true
-  try {
-    const data = await listMyGoods({ page: page.value, size: size.value })
-    rows.value = data.items
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
-}
+const { items: rows, total, page, size, loading, error, load } = usePageList<Goods>(
+  (page, size) => listMyGoods({ page, size }),
+)
 
 function editable(g: Goods) {
   return g.status === 'ON_SALE' || g.status === 'OFF_SHELF'
@@ -49,7 +38,8 @@ onMounted(load)
         <el-button type="primary" size="small" @click="router.push('/goods/new')">发布商品</el-button>
       </div>
     </template>
-    <el-table :data="rows" v-loading="loading" border>
+    <LoadError v-if="error" @retry="load" />
+    <el-table v-else :data="rows" v-loading="loading" border>
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="title" label="标题" min-width="160" />
       <el-table-column label="分类" width="110">

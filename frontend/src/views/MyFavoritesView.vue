@@ -1,27 +1,16 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listFavorites, unfavorite, type Favorite } from '@/api/community'
 import { GOODS_STATUS_LABELS, goodsStatusTag } from '@/constants'
+import { usePageList } from '@/composables/usePageList'
+import LoadError from '@/components/LoadError.vue'
 
 const router = useRouter()
-const rows = ref<Favorite[]>([])
-const total = ref(0)
-const page = ref(1)
-const size = ref(20)
-const loading = ref(false)
-
-async function load() {
-  loading.value = true
-  try {
-    const data = await listFavorites({ page: page.value, size: size.value })
-    rows.value = data.items
-    total.value = data.total
-  } finally {
-    loading.value = false
-  }
-}
+const { items: rows, total, page, size, loading, error, load } = usePageList<Favorite>(
+  (page, size) => listFavorites({ page, size }),
+)
 
 async function remove(f: Favorite) {
   try {
@@ -39,7 +28,8 @@ onMounted(load)
 <template>
   <el-card>
     <template #header>我的收藏</template>
-    <el-table :data="rows" v-loading="loading" border>
+    <LoadError v-if="error" @retry="load" />
+    <el-table v-else :data="rows" v-loading="loading" border>
       <el-table-column prop="goodsId" label="商品号" width="90" />
       <el-table-column prop="title" label="标题" min-width="180" />
       <el-table-column label="价格" width="110">

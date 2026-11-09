@@ -1,26 +1,28 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, type FormInstance } from 'element-plus'
 import { updateNickname, deleteAccount } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
+import { NICKNAME_RULES, LOGIN_PASSWORD_RULES, isValid } from '@/utils/validate'
 
 const router = useRouter()
 const auth = useAuthStore()
 
-const nickname = ref(auth.user?.nickname ?? '')
+const nicknameForm = reactive({ nickname: auth.user?.nickname ?? '' })
+const nicknameFormRef = ref<FormInstance>()
+const nicknameRules = { nickname: NICKNAME_RULES }
 const nicknameSaving = ref(false)
 
 const deleteVisible = ref(false)
 const deleteForm = reactive({ password: '' })
+const deleteFormRef = ref<FormInstance>()
+const deleteRules = { password: LOGIN_PASSWORD_RULES }
 const deleteSaving = ref(false)
 
 async function saveNickname() {
-  const value = nickname.value.trim()
-  if (!value) {
-    ElMessage.warning('昵称不能为空')
-    return
-  }
+  if (!(await isValid(nicknameFormRef.value))) return
+  const value = nicknameForm.nickname.trim()
   nicknameSaving.value = true
   try {
     const user = await updateNickname(value)
@@ -34,10 +36,7 @@ async function saveNickname() {
 }
 
 async function doDelete() {
-  if (!deleteForm.password) {
-    ElMessage.warning('请输入密码确认')
-    return
-  }
+  if (!(await isValid(deleteFormRef.value))) return
   deleteSaving.value = true
   try {
     await deleteAccount(deleteForm.password)
@@ -62,9 +61,9 @@ async function doDelete() {
       <el-descriptions-item label="注册时间">{{ auth.user.createdAt }}</el-descriptions-item>
     </el-descriptions>
 
-    <el-form label-width="80px" class="nickname-form">
-      <el-form-item label="昵称">
-        <el-input v-model="nickname" maxlength="50" style="max-width: 300px" />
+    <el-form ref="nicknameFormRef" :model="nicknameForm" :rules="nicknameRules" label-width="80px" class="nickname-form">
+      <el-form-item label="昵称" prop="nickname">
+        <el-input v-model="nicknameForm.nickname" maxlength="50" style="max-width: 300px" />
         <el-button type="primary" :loading="nicknameSaving" @click="saveNickname">保存昵称</el-button>
       </el-form-item>
     </el-form>
@@ -74,7 +73,11 @@ async function doDelete() {
 
     <el-dialog v-model="deleteVisible" title="注销账号" width="420px">
       <p class="warn">注销后将无法登录，账号记录会保留但不可恢复。请谨慎操作。</p>
-      <el-input v-model="deleteForm.password" type="password" show-password placeholder="请输入当前密码确认" />
+      <el-form ref="deleteFormRef" :model="deleteForm" :rules="deleteRules">
+        <el-form-item prop="password">
+          <el-input v-model="deleteForm.password" type="password" show-password placeholder="请输入当前密码确认" />
+        </el-form-item>
+      </el-form>
       <template #footer>
         <el-button @click="deleteVisible = false">取消</el-button>
         <el-button type="danger" :loading="deleteSaving" @click="doDelete">确认注销</el-button>

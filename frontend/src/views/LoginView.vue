@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, type FormInstance } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
+import { EMAIL_RULES, LOGIN_PASSWORD_RULES, isValid } from '@/utils/validate'
 
 const router = useRouter()
 const auth = useAuthStore()
 const form = reactive({ email: '', password: '' })
+const formRef = ref<FormInstance>()
 const loading = ref(false)
+const rules = { email: EMAIL_RULES, password: LOGIN_PASSWORD_RULES }
 
 async function submit() {
-  if (!form.email || !form.password) {
-    ElMessage.warning('请输入邮箱和密码')
-    return
-  }
+  if (!(await isValid(formRef.value))) return
   loading.value = true
   try {
     await auth.login(form.email, form.password)
@@ -31,11 +31,11 @@ async function submit() {
   <div class="login-wrap">
     <el-card class="login-card">
       <h2>登录</h2>
-      <el-form>
-        <el-form-item label="校园邮箱">
+      <el-form ref="formRef" :model="form" :rules="rules">
+        <el-form-item label="校园邮箱" prop="email">
           <el-input v-model="form.email" placeholder="xxx@mail.dhu.edu.cn" />
         </el-form-item>
-        <el-form-item label="密码">
+        <el-form-item label="密码" prop="password">
           <el-input v-model="form.password" type="password" show-password @keyup.enter="submit" />
         </el-form-item>
         <el-button type="primary" :loading="loading" @click="submit">登录</el-button>
