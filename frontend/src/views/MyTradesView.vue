@@ -4,13 +4,13 @@ import { useRouter } from 'vue-router'
 import { listTrades, type Trade } from '@/api/trades'
 import { useAuthStore } from '@/stores/auth'
 import { TRADE_STATUS_LABELS, tradeStatusTag } from '@/constants'
-import { usePageList } from '@/composables/usePageList'
+import { usePageList, PAGE_SIZES } from '@/composables/usePageList'
 import LoadError from '@/components/LoadError.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
 const role = ref<string | number>('ALL')
-const { items: rows, total, page, size, loading, error, load, reset } = usePageList<Trade>(
+const { items: rows, total, page, size, loading, error, load, reset, changePage, changeSize } = usePageList<Trade>(
   (page, size) => listTrades({ role: String(role.value), page, size }),
 )
 
@@ -58,11 +58,13 @@ onMounted(load)
     </el-table>
     <el-pagination
       v-model:current-page="page"
-      :page-size="size"
+      v-model:page-size="size"
+      :page-sizes="PAGE_SIZES"
       :total="total"
-      layout="prev, pager, next, total"
+      layout="prev, pager, next, sizes, total"
       class="pager"
-      @current-change="load"
+      @current-change="changePage"
+      @size-change="changeSize"
     />
   </el-card>
 </template>

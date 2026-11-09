@@ -14,12 +14,13 @@ import {
   TARGET_TYPE_LABELS,
   reportStatusTag,
 } from '@/constants'
-import { usePageList } from '@/composables/usePageList'
+import { usePageList, PAGE_SIZES } from '@/composables/usePageList'
 import LoadError from '@/components/LoadError.vue'
+import { formatTime } from '@/utils/format'
 import { textRules, isValid } from '@/utils/validate'
 
 const status = ref('')
-const { items: rows, total, page, size, loading, error, load, reset } = usePageList<Report>(
+const { items: rows, total, page, size, loading, error, load, reset, changePage, changeSize } = usePageList<Report>(
   (page, size) => listAdminReports({ status: status.value || undefined, page, size }),
 )
 
@@ -164,11 +165,13 @@ onMounted(load)
     </el-table>
     <el-pagination
       v-model:current-page="page"
-      :page-size="size"
+      v-model:page-size="size"
+      :page-sizes="PAGE_SIZES"
       :total="total"
-      layout="prev, pager, next, total"
+      layout="prev, pager, next, sizes, total"
       class="pager"
-      @current-change="load"
+      @current-change="changePage"
+      @size-change="changeSize"
     />
 
     <el-dialog v-model="resolveVisible" title="处理举报" width="520px">
@@ -199,7 +202,7 @@ onMounted(load)
       <div v-for="a in audits" :key="a.id" class="audit">
         <p>{{ a.action }}</p>
         <p class="detail">{{ a.detail }}</p>
-        <span class="meta">操作人 #{{ a.actorId }} · {{ a.createdAt }}</span>
+        <span class="meta">操作人 #{{ a.actorId }} · {{ formatTime(a.createdAt) }}</span>
       </div>
     </el-dialog>
   </el-card>

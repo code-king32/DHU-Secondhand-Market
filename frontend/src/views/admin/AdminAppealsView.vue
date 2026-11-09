@@ -3,12 +3,12 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance } from 'element-plus'
 import { listAdminAppeals, resolveAppeal, type Appeal } from '@/api/community'
 import { APPEAL_STATUS_LABELS, reportStatusTag } from '@/constants'
-import { usePageList } from '@/composables/usePageList'
+import { usePageList, PAGE_SIZES } from '@/composables/usePageList'
 import LoadError from '@/components/LoadError.vue'
 import { textRules, isValid } from '@/utils/validate'
 
 const status = ref('')
-const { items: rows, total, page, size, loading, error, load, reset } = usePageList<Appeal>(
+const { items: rows, total, page, size, loading, error, load, reset, changePage, changeSize } = usePageList<Appeal>(
   (page, size) => listAdminAppeals({ status: status.value || undefined, page, size }),
 )
 
@@ -81,11 +81,13 @@ onMounted(load)
     </el-table>
     <el-pagination
       v-model:current-page="page"
-      :page-size="size"
+      v-model:page-size="size"
+      :page-sizes="PAGE_SIZES"
       :total="total"
-      layout="prev, pager, next, total"
+      layout="prev, pager, next, sizes, total"
       class="pager"
-      @current-change="load"
+      @current-change="changePage"
+      @size-change="changeSize"
     />
 
     <el-dialog v-model="resolveVisible" title="处理申诉" width="520px">

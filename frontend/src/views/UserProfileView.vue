@@ -4,6 +4,8 @@ import { useRoute } from 'vue-router'
 import { getUser, type PublicProfile } from '@/api/auth'
 import { getReputation, listReviews, type Reputation, type Review } from '@/api/community'
 import LoadError from '@/components/LoadError.vue'
+import { PAGE_SIZES } from '@/composables/usePageList'
+import { formatTime } from '@/utils/format'
 
 const route = useRoute()
 const id = Number(route.params.id)
@@ -32,6 +34,23 @@ async function load() {
   }
 }
 
+function scrollTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function changePage(p: number) {
+  page.value = p
+  scrollTop()
+  load()
+}
+
+function changeSize(s: number) {
+  size.value = s
+  page.value = 1
+  scrollTop()
+  load()
+}
+
 onMounted(load)
 </script>
 
@@ -56,15 +75,17 @@ onMounted(load)
       <div v-for="r in reviews" :key="r.id" class="review">
         <el-rate :model-value="r.rating" disabled />
         <p class="comment">{{ r.comment }}</p>
-        <span class="meta">来自用户 #{{ r.reviewerId }} · {{ r.createdAt }}</span>
+        <span class="meta">来自用户 #{{ r.reviewerId }} · {{ formatTime(r.createdAt) }}</span>
       </div>
       <el-pagination
         v-model:current-page="page"
-        :page-size="size"
+        v-model:page-size="size"
+        :page-sizes="PAGE_SIZES"
         :total="total"
-        layout="prev, pager, next, total"
+        layout="prev, pager, next, sizes, total"
         class="pager"
-        @current-change="load"
+        @current-change="changePage"
+        @size-change="changeSize"
       />
     </el-card>
   </div>

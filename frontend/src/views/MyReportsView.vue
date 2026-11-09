@@ -14,11 +14,12 @@ import {
   TARGET_TYPE_LABELS,
   reportStatusTag,
 } from '@/constants'
-import { usePageList } from '@/composables/usePageList'
+import { usePageList, PAGE_SIZES } from '@/composables/usePageList'
 import LoadError from '@/components/LoadError.vue'
+import { formatTime } from '@/utils/format'
 import { textRules, isValid } from '@/utils/validate'
 
-const { items: rows, total, page, size, loading, error, load } = usePageList<Report>(
+const { items: rows, total, page, size, loading, error, load, changePage, changeSize } = usePageList<Report>(
   (page, size) => listMyReports({ page, size }),
 )
 
@@ -94,11 +95,13 @@ onMounted(load)
     </el-table>
     <el-pagination
       v-model:current-page="page"
-      :page-size="size"
+      v-model:page-size="size"
+      :page-sizes="PAGE_SIZES"
       :total="total"
-      layout="prev, pager, next, total"
+      layout="prev, pager, next, sizes, total"
       class="pager"
-      @current-change="load"
+      @current-change="changePage"
+      @size-change="changeSize"
     />
 
     <el-dialog v-model="appealVisible" title="提交申诉" width="480px">
@@ -118,7 +121,7 @@ onMounted(load)
       <div v-for="a in appeals" :key="a.id" class="appeal">
         <p>{{ a.reason }}</p>
         <span class="meta">
-          {{ APPEAL_STATUS_LABELS[a.status] ?? a.status }} · {{ a.createdAt }}
+          {{ APPEAL_STATUS_LABELS[a.status] ?? a.status }} · {{ formatTime(a.createdAt) }}
         </span>
       </div>
     </el-dialog>
