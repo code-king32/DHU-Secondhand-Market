@@ -5,6 +5,9 @@ export interface PageListOptions {
   size?: number
 }
 
+// 分页可选每页条数，供各列表页统一使用。
+export const PAGE_SIZES = [12, 24, 48, 96]
+
 // 统一列表页的分页、加载中、空数据与网络错误状态。
 // fetcher 通过闭包读取当前搜索/筛选条件，返回后端 Page<T> 结构。
 export function usePageList<T>(
@@ -17,6 +20,10 @@ export function usePageList<T>(
   const size = ref(options.size ?? 20)
   const loading = ref(false)
   const error = ref(false)
+
+  function scrollTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   async function load() {
     loading.value = true
@@ -36,8 +43,24 @@ export function usePageList<T>(
   // 搜索/筛选变化时回到第一页重新加载。
   function reset() {
     page.value = 1
+    scrollTop()
     return load()
   }
 
-  return { items, total, page, size, loading, error, load, reset }
+  // 切换页码：记录页码、回到顶部后重新加载。
+  function changePage(p: number) {
+    page.value = p
+    scrollTop()
+    return load()
+  }
+
+  // 切换每页条数：回到第一页重新加载。
+  function changeSize(s: number) {
+    size.value = s
+    page.value = 1
+    scrollTop()
+    return load()
+  }
+
+  return { items, total, page, size, loading, error, load, reset, changePage, changeSize }
 }

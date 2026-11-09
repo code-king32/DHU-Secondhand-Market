@@ -4,11 +4,11 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listMyGoods, shelfGoods, type Goods } from '@/api/goods'
 import { CATEGORY_LABELS, GOODS_STATUS_LABELS, goodsStatusTag } from '@/constants'
-import { usePageList } from '@/composables/usePageList'
+import { usePageList, PAGE_SIZES } from '@/composables/usePageList'
 import LoadError from '@/components/LoadError.vue'
 
 const router = useRouter()
-const { items: rows, total, page, size, loading, error, load } = usePageList<Goods>(
+const { items: rows, total, page, size, loading, error, load, changePage, changeSize } = usePageList<Goods>(
   (page, size) => listMyGoods({ page, size }),
 )
 
@@ -73,11 +73,13 @@ onMounted(load)
     </el-table>
     <el-pagination
       v-model:current-page="page"
-      :page-size="size"
+      v-model:page-size="size"
+      :page-sizes="PAGE_SIZES"
       :total="total"
-      layout="prev, pager, next, total"
+      layout="prev, pager, next, sizes, total"
       class="pager"
-      @current-change="load"
+      @current-change="changePage"
+      @size-change="changeSize"
     />
   </el-card>
 </template>

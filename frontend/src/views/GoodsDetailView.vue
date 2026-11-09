@@ -7,6 +7,7 @@ import { applyTrade } from '@/api/trades'
 import { favorite, createReport } from '@/api/community'
 import { useAuthStore } from '@/stores/auth'
 import { CATEGORY_LABELS, GOODS_STATUS_LABELS, goodsStatusTag } from '@/constants'
+import { formatTime } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -100,7 +101,7 @@ onMounted(load)
         </div>
         <div class="meta">
           <router-link :to="`/users/${goods.sellerId}`" class="link">查看卖家主页</router-link>
-          <span>发布于 {{ goods.createdAt }}</span>
+          <span>发布于 {{ formatTime(goods.createdAt) }}</span>
         </div>
       </el-card>
 

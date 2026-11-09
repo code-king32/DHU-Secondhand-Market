@@ -4,14 +4,14 @@ import { ElMessage, type FormInstance } from 'element-plus'
 import { listWanted, createWanted, closeWanted, type Wanted } from '@/api/community'
 import { useAuthStore } from '@/stores/auth'
 import { CATEGORY_LABELS } from '@/constants'
-import { usePageList } from '@/composables/usePageList'
+import { usePageList, PAGE_SIZES } from '@/composables/usePageList'
 import LoadError from '@/components/LoadError.vue'
 import { TITLE_RULES, WANTED_DESCRIPTION_RULES, isValid } from '@/utils/validate'
 
 const auth = useAuthStore()
 const q = ref('')
 const category = ref('')
-const { items: rows, total, page, size, loading, error, load, reset } = usePageList<Wanted>(
+const { items: rows, total, page, size, loading, error, load, reset, changePage, changeSize } = usePageList<Wanted>(
   (page, size) => listWanted({ q: q.value || undefined, category: category.value || undefined, page, size }),
   { size: 12 },
 )
@@ -85,7 +85,7 @@ onMounted(load)
 
     <LoadError v-if="error" @retry="load" />
     <el-row v-else-if="rows.length" :gutter="16">
-      <el-col v-for="w in rows" :key="w.id" :span="6">
+      <el-col v-for="w in rows" :key="w.id" :xs="24" :sm="12" :md="8" :lg="6">
         <el-card class="wanted-card">
           <template #header>{{ w.title }}</template>
           <p class="cat">{{ CATEGORY_LABELS[w.category] ?? w.category }}</p>
@@ -106,11 +106,13 @@ onMounted(load)
 
     <el-pagination
       v-model:current-page="page"
-      :page-size="size"
+      v-model:page-size="size"
+      :page-sizes="PAGE_SIZES"
       :total="total"
-      layout="prev, pager, next, total"
+      layout="prev, pager, next, sizes, total"
       class="pager"
-      @current-change="load"
+      @current-change="changePage"
+      @size-change="changeSize"
     />
 
     <el-dialog v-model="dialogVisible" title="发布求购" width="480px">

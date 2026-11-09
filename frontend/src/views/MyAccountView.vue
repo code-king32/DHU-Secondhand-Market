@@ -5,6 +5,7 @@ import { ElMessage, type FormInstance } from 'element-plus'
 import { updateNickname, deleteAccount } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { NICKNAME_RULES, LOGIN_PASSWORD_RULES, isValid } from '@/utils/validate'
+import { formatTime } from '@/utils/format'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -58,7 +59,7 @@ async function doDelete() {
       <el-descriptions-item label="邮箱">{{ auth.user.email }}</el-descriptions-item>
       <el-descriptions-item label="角色">{{ auth.user.role === 'ADMIN' ? '管理员' : '普通用户' }}</el-descriptions-item>
       <el-descriptions-item label="邮箱认证">{{ auth.user.emailVerified ? '已认证' : '未认证' }}</el-descriptions-item>
-      <el-descriptions-item label="注册时间">{{ auth.user.createdAt }}</el-descriptions-item>
+      <el-descriptions-item label="注册时间">{{ formatTime(auth.user.createdAt) }}</el-descriptions-item>
     </el-descriptions>
 
     <el-form ref="nicknameFormRef" :model="nicknameForm" :rules="nicknameRules" label-width="80px" class="nickname-form">

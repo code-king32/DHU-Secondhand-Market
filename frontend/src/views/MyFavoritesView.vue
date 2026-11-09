@@ -4,11 +4,11 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listFavorites, unfavorite, type Favorite } from '@/api/community'
 import { GOODS_STATUS_LABELS, goodsStatusTag } from '@/constants'
-import { usePageList } from '@/composables/usePageList'
+import { usePageList, PAGE_SIZES } from '@/composables/usePageList'
 import LoadError from '@/components/LoadError.vue'
 
 const router = useRouter()
-const { items: rows, total, page, size, loading, error, load } = usePageList<Favorite>(
+const { items: rows, total, page, size, loading, error, load, changePage, changeSize } = usePageList<Favorite>(
   (page, size) => listFavorites({ page, size }),
 )
 
@@ -51,11 +51,13 @@ onMounted(load)
     </el-table>
     <el-pagination
       v-model:current-page="page"
-      :page-size="size"
+      v-model:page-size="size"
+      :page-sizes="PAGE_SIZES"
       :total="total"
-      layout="prev, pager, next, total"
+      layout="prev, pager, next, sizes, total"
       class="pager"
-      @current-change="load"
+      @current-change="changePage"
+      @size-change="changeSize"
     />
   </el-card>
 </template>
