@@ -30,10 +30,13 @@ public class MailDeliveryService {
     private final Clock clock;
     private final int maxAttempts;
     private final int retryDelay;
+    private final int batchSize;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public MailDeliveryService(JdbcTemplate jdbc, PlatformTransactionManager manager, MailService mail,
             MailCodeCipher cipher, Clock clock, @Value("${app.mail.max-attempts:3}") int maxAttempts,
-            @Value("${app.mail.retry-delay-seconds:15}") int retryDelay) {
+            @Value("${app.mail.retry-delay-seconds:15}") int retryDelay,
+            @Value("${app.mail.batch-size:20}") int batchSize) {
         this.jdbc = jdbc;
         this.tx = new TransactionTemplate(manager);
         this.mail = mail;
@@ -41,6 +44,13 @@ public class MailDeliveryService {
         this.clock = clock;
         this.maxAttempts = Math.max(1, maxAttempts);
         this.retryDelay = Math.max(1, retryDelay);
+        this.batchSize = Math.max(1, Math.min(500, batchSize));
+    }
+
+    /** Compatibility constructor for manual reliability tests and small embedded callers. */
+    public MailDeliveryService(JdbcTemplate jdbc, PlatformTransactionManager manager, MailService mail,
+            MailCodeCipher cipher, Clock clock, int maxAttempts, int retryDelay) {
+        this(jdbc, manager, mail, cipher, clock, maxAttempts, retryDelay, 20);
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -129,8 +139,8 @@ public class MailDeliveryService {
         var ids = jdbc.queryForList("""
                 SELECT id FROM app_mail_delivery
                 WHERE (status='PENDING' AND next_attempt_at<=?) OR (status='SENDING' AND lease_until<=?)
-                ORDER BY created_at LIMIT 20
-                """, String.class, now, now);
+                ORDER BY created_at LIMIT ?
+                """, String.class, now, now, batchSize);
         for (String id : ids) {
             try { attempt(id); }
             catch (RuntimeException exception) { log.error("Mail delivery {} processing failed: {}", id, exception.getClass().getSimpleName()); }
