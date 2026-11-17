@@ -3,6 +3,11 @@
 spring.datasource.url=${DB_URL}
 spring.datasource.username=${DB_USERNAME}
 spring.datasource.password=${DB_PASSWORD}
+spring.datasource.hikari.maximum-pool-size=${DB_POOL_MAX:10}
+spring.datasource.hikari.minimum-idle=${DB_POOL_MIN_IDLE:2}
+spring.datasource.hikari.connection-timeout=${DB_POOL_CONNECTION_TIMEOUT_MS:5000}
+spring.datasource.hikari.validation-timeout=${DB_POOL_VALIDATION_TIMEOUT_MS:2000}
+spring.datasource.hikari.max-lifetime=${DB_POOL_MAX_LIFETIME_MS:1800000}
 spring.mail.host=${MAIL_HOST}
 spring.mail.port=${MAIL_PORT:465}
 spring.mail.username=${MAIL_USERNAME}

@@ -43,13 +43,16 @@ public class ImageStorage {
     private final int maxPerUser;
     private final long maxBytes;
     private final int retentionHours;
+    private final int cleanupBatchSize;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ImageStorage(@Value("${app.images.directory:uploads/images}") String directory,
             JdbcTemplate jdbc, PlatformTransactionManager manager, Clock clock,
             @Value("${app.images.max-per-user:100}") int maxPerUser,
             @Value("${app.images.max-bytes-per-user:104857600}") long maxBytes,
             @Value("${app.images.unused-retention-hours:24}") int retentionHours,
             @Value("${app.images.max-concurrent-decodes:2}") int maxConcurrentDecodes,
+            @Value("${app.images.cleanup-batch-size:200}") int cleanupBatchSize,
             com.dhu.secondhand.common.SessionAuth sessionAuth) {
         this.sessionAuth = sessionAuth;
         this.decodeSlots = new java.util.concurrent.Semaphore(Math.max(1, maxConcurrentDecodes));
@@ -60,6 +63,15 @@ public class ImageStorage {
         this.maxPerUser = Math.max(1, maxPerUser);
         this.maxBytes = Math.max(1, maxBytes);
         this.retentionHours = Math.max(1, retentionHours);
+        this.cleanupBatchSize = Math.max(1, Math.min(1000, cleanupBatchSize));
+    }
+
+    /** Compatibility constructor for manual reliability tests and small embedded callers. */
+    public ImageStorage(String directory, JdbcTemplate jdbc, PlatformTransactionManager manager, Clock clock,
+            int maxPerUser, long maxBytes, int retentionHours, int maxConcurrentDecodes,
+            com.dhu.secondhand.common.SessionAuth sessionAuth) {
+        this(directory, jdbc, manager, clock, maxPerUser, maxBytes, retentionHours, maxConcurrentDecodes,
+                200, sessionAuth);
     }
 
     public String store(long owner, MultipartFile file) {
@@ -213,8 +225,8 @@ public class ImageStorage {
         var cutoff = now().minusHours(retentionHours);
         var candidates = jdbc.queryForList("""
                 SELECT name FROM app_uploaded_image WHERE status='DELETING' OR
-                (unused_since IS NOT NULL AND unused_since<=?) ORDER BY created_at LIMIT 200
-                """, String.class, cutoff);
+                (unused_since IS NOT NULL AND unused_since<=?) ORDER BY created_at LIMIT ?
+                """, String.class, cutoff, cleanupBatchSize);
         for (String name : candidates) {
             try {
                 Boolean deleting = tx.execute(status -> {

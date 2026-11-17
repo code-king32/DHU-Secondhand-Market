@@ -24,15 +24,29 @@ public class BackgroundJobs {
     }
 
     @Bean("mailTaskScheduler")
-    public ThreadPoolTaskScheduler mailTaskScheduler() { return scheduler("mail-job-"); }
+    public ThreadPoolTaskScheduler mailTaskScheduler(
+            @org.springframework.beans.factory.annotation.Value("${app.jobs.mail-pool-size:1}") int poolSize) {
+        return scheduler("mail-job-", poolSize);
+    }
+
+    /** Test and programmatic callers retain a deterministic single-thread default. */
+    public ThreadPoolTaskScheduler mailTaskScheduler() { return scheduler("mail-job-", 1); }
 
     @Bean("maintenanceTaskScheduler")
-    public ThreadPoolTaskScheduler maintenanceTaskScheduler() { return scheduler("maintenance-job-"); }
+    public ThreadPoolTaskScheduler maintenanceTaskScheduler(
+            @org.springframework.beans.factory.annotation.Value("${app.jobs.maintenance-pool-size:1}") int poolSize) {
+        return scheduler("maintenance-job-", poolSize);
+    }
 
-    private ThreadPoolTaskScheduler scheduler(String prefix) {
+    /** Test and programmatic callers retain a deterministic single-thread default. */
+    public ThreadPoolTaskScheduler maintenanceTaskScheduler() { return scheduler("maintenance-job-", 1); }
+
+    private ThreadPoolTaskScheduler scheduler(String prefix, int configuredPoolSize) {
         var scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setPoolSize(1);
+        scheduler.setPoolSize(Math.max(1, configuredPoolSize));
         scheduler.setThreadNamePrefix(prefix);
+        scheduler.setWaitForTasksToCompleteOnShutdown(true);
+        scheduler.setAwaitTerminationSeconds(25);
         return scheduler;
     }
 

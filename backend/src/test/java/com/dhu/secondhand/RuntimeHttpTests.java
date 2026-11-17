@@ -63,6 +63,8 @@ class RuntimeHttpTests {
         assertFalse(registered.body().contains("password"));
         var loggedIn = post(client,"/api/auth/login",Map.of("email",email,"password","Runtime123!"));
         assertEquals(200,loggedIn.statusCode());
+        String requestId = loggedIn.headers().firstValue("X-Request-Id").orElseThrow();
+        assertTrue(requestId.matches("[0-9a-f-]{36}"), "服务端应返回可追踪的请求 ID");
         assertEquals(420, timeout.get(), "会话有效期必须遵循部署配置");
         String sessionCookie = loggedIn.headers().allValues("Set-Cookie").stream()
                 .filter(value -> value.startsWith("JSESSIONID=")).findFirst().orElseThrow();

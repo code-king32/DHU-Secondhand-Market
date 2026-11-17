@@ -1,6 +1,7 @@
 package com.dhu.secondhand.marketplace;
 
 import com.dhu.secondhand.common.ApiException;
+import com.dhu.secondhand.common.SessionAuth;
 import com.dhu.secondhand.common.TextValidation;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,12 +23,12 @@ import static com.dhu.secondhand.marketplace.MarketDtos.*;
 @Service
 public class MarketplaceService {
     private static final Set<String> CATEGORIES = Set.of("TEXTBOOK", "ELECTRONICS", "DAILY", "CLOTHING", "OTHER");
-    private final com.dhu.secondhand.common.SessionAuth sessionAuth;
+    private final SessionAuth sessionAuth;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final ImageStorage imageStorage;
 
-    public MarketplaceService(JdbcTemplate jdbc, ObjectMapper json, ImageStorage imageStorage, com.dhu.secondhand.common.SessionAuth sessionAuth) {
+    public MarketplaceService(JdbcTemplate jdbc, ObjectMapper json, ImageStorage imageStorage, SessionAuth sessionAuth) {
         this.sessionAuth = sessionAuth;
         this.jdbc = jdbc;
         this.json = json;
@@ -65,10 +66,7 @@ public class MarketplaceService {
     public GoodsView edit(long actor, long id, GoodsWriteRequest request) {
         String title = requiredText(request.title(), 100, "标题");
         String description = requiredText(request.description(), 5000, "描述");
-        lockAccounts(actor, actor, actor, true);
-        GoodsView goods = findGoods(id, true);
-        owner(actor, goods.sellerId());
-        editable(goods);
+        GoodsView goods = lockEditableGoods(actor, id);
         List<String> imageUrls = imageStorage.normalizeUrls(request.imageUrls());
         imageStorage.bind(actor, id, imageUrls, goods.imageUrls());
         jdbc.update("""
@@ -81,12 +79,8 @@ public class MarketplaceService {
 
     @Transactional
     public GoodsView shelf(long actor, long id, boolean onSale) {
-        lockAccounts(actor, actor, actor, true);
-        GoodsView goods = findGoods(id, true);
-        owner(actor, goods.sellerId());
-        editable(goods);
-        jdbc.update("UPDATE market_goods SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                onSale ? "ON_SALE" : "OFF_SHELF", id);
+        lockEditableGoods(actor, id);
+        updateGoodsStatus(id, onSale ? "ON_SALE" : "OFF_SHELF");
         return findGoods(id, false);
     }
 
@@ -193,26 +187,24 @@ public class MarketplaceService {
 
     @Transactional
     public TradeView accept(long actor, long id) {
-        TradeView initial = findTrade(id, false);
-        lockAccounts(initial.sellerId(), initial.buyerId(), actor, true);
-        GoodsView goods = findGoods(initial.goodsId(), true);
-        TradeView trade = findTrade(id, true);
+        LockedTrade locked = lockTrade(actor, id, true);
+        TradeView trade = locked.trade();
+        GoodsView goods = locked.goods();
         owner(actor, trade.sellerId());
         if (trade.status().equals("ACCEPTED")) return trade;
         if (!trade.status().equals("PENDING") || !goods.status().equals("ON_SALE")) {
             throw error(HttpStatus.CONFLICT, "该交易当前不可接受");
         }
-        jdbc.update("UPDATE market_goods SET status='TRADING',updated_at=CURRENT_TIMESTAMP WHERE id=?", goods.id());
+        updateGoodsStatus(goods.id(), "TRADING");
         jdbc.update("UPDATE market_trade SET status='ACCEPTED',updated_at=CURRENT_TIMESTAMP WHERE id=?", id);
         return findTrade(id, false);
     }
 
     @Transactional
     public TradeView confirm(long actor, long id) {
-        TradeView initial = findTrade(id, false);
-        lockAccounts(initial.sellerId(), initial.buyerId(), actor, true);
-        GoodsView goods = findGoods(initial.goodsId(), true);
-        TradeView trade = findTrade(id, true);
+        LockedTrade locked = lockTrade(actor, id, true);
+        TradeView trade = locked.trade();
+        GoodsView goods = locked.goods();
         participant(actor, trade);
         if (trade.status().equals("COMPLETED")) return trade;
         if (!trade.status().equals("ACCEPTED") || !goods.status().equals("TRADING")) {
@@ -220,12 +212,13 @@ public class MarketplaceService {
         }
         boolean buyerConfirmed = trade.buyerConfirmed() || actor == trade.buyerId();
         boolean sellerConfirmed = trade.sellerConfirmed() || actor == trade.sellerId();
-        String status = buyerConfirmed && sellerConfirmed ? "COMPLETED" : "ACCEPTED";
+        boolean completed = buyerConfirmed && sellerConfirmed;
+        String status = completed ? "COMPLETED" : "ACCEPTED";
         jdbc.update("""
                 UPDATE market_trade SET buyer_confirmed=?,seller_confirmed=?,status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?
                 """, buyerConfirmed, sellerConfirmed, status, id);
-        if (status.equals("COMPLETED")) {
-            jdbc.update("UPDATE market_goods SET status='SOLD',updated_at=CURRENT_TIMESTAMP WHERE id=?", goods.id());
+        if (completed) {
+            updateGoodsStatus(goods.id(), "SOLD");
             jdbc.update("""
                     UPDATE market_trade SET status='CANCELLED',updated_at=CURRENT_TIMESTAMP
                     WHERE goods_id=? AND id<>? AND status='PENDING'
@@ -236,19 +229,41 @@ public class MarketplaceService {
 
     @Transactional
     public TradeView cancel(long actor, long id) {
-        TradeView initial = findTrade(id, false);
-        lockAccounts(initial.sellerId(), initial.buyerId(), actor, false);
-        GoodsView goods = findGoods(initial.goodsId(), true);
-        TradeView trade = findTrade(id, true);
+        LockedTrade locked = lockTrade(actor, id, false);
+        TradeView trade = locked.trade();
+        GoodsView goods = locked.goods();
         participant(actor, trade);
         if (trade.status().equals("CANCELLED")) return trade;
         if (trade.status().equals("COMPLETED")) throw error(HttpStatus.CONFLICT, "已完成交易不能取消");
         jdbc.update("UPDATE market_trade SET status='CANCELLED',updated_at=CURRENT_TIMESTAMP WHERE id=?", id);
         if (trade.status().equals("ACCEPTED")) {
             if (!goods.status().equals("TRADING")) throw error(HttpStatus.CONFLICT, "商品状态异常");
-            jdbc.update("UPDATE market_goods SET status='ON_SALE',updated_at=CURRENT_TIMESTAMP WHERE id=?", goods.id());
+            updateGoodsStatus(goods.id(), "ON_SALE");
         }
         return findTrade(id, false);
+    }
+
+    private LockedTrade lockTrade(long actor, long id, boolean requireBothActive) {
+        TradeView initial = findTrade(id, false);
+        lockAccounts(initial.sellerId(), initial.buyerId(), actor, requireBothActive);
+        GoodsView goods = findGoods(initial.goodsId(), true);
+        return new LockedTrade(findTrade(id, true), goods);
+    }
+
+    private record LockedTrade(TradeView trade, GoodsView goods) { }
+
+    private GoodsView lockEditableGoods(long actor, long id) {
+        lockAccounts(actor, actor, actor, true);
+        GoodsView goods = findGoods(id, true);
+        owner(actor, goods.sellerId());
+        if (!Set.of("ON_SALE", "OFF_SHELF").contains(goods.status())) {
+            throw error(HttpStatus.CONFLICT, "交易中或已售商品不可编辑或上下架");
+        }
+        return goods;
+    }
+
+    private void updateGoodsStatus(long id, String status) {
+        jdbc.update("UPDATE market_goods SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", status, id);
     }
 
     private GoodsView findGoods(long id, boolean lock) {
@@ -300,10 +315,6 @@ public class MarketplaceService {
     private List<String> parseImages(String value) {
         try { return json.readValue(value, new TypeReference<List<String>>() { }); }
         catch (Exception exception) { throw new IllegalStateException("图片地址数据无效", exception); }
-    }
-
-    private void editable(GoodsView goods) {
-        if (!Set.of("ON_SALE", "OFF_SHELF").contains(goods.status())) throw error(HttpStatus.CONFLICT, "交易中或已售商品不可编辑或上下架");
     }
 
     private void lockAccounts(long first, long second, long actor, boolean requireBothActive) {
