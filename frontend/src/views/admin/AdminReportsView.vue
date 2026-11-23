@@ -6,12 +6,14 @@ import {
   resolveReport,
   getReportAudit,
   setUserStatus,
+  restoreGoods,
   type Report,
   type Audit,
 } from '@/api/community'
 import {
   REPORT_STATUS_LABELS,
   TARGET_TYPE_LABELS,
+  GOODS_STATUS_LABELS,
   reportStatusTag,
 } from '@/constants'
 import { usePageList, PAGE_SIZES } from '@/composables/usePageList'
@@ -37,6 +39,13 @@ watch(() => form.decision, (decision) => {
 
 const auditVisible = ref(false)
 const audits = ref<Audit[]>([])
+
+const restoreVisible = ref(false)
+const restoreCurrent = ref<Report | null>(null)
+const restoring = ref(false)
+const restoreForm = reactive({ note: '' })
+const restoreFormRef = ref<FormInstance>()
+const restoreRules = { note: textRules(1000, '请填写恢复说明') }
 
 const statusUserId = ref<number | null>(null)
 const statusSaving = ref(false)
@@ -99,6 +108,28 @@ async function openAudit(r: Report) {
   auditVisible.value = true
 }
 
+function openRestore(r: Report) {
+  restoreCurrent.value = r
+  restoreForm.note = ''
+  restoreVisible.value = true
+}
+
+async function submitRestore() {
+  if (!restoreCurrent.value) return
+  if (!(await isValid(restoreFormRef.value))) return
+  restoring.value = true
+  try {
+    const result = await restoreGoods(restoreCurrent.value.id, restoreForm.note.trim())
+    ElMessage.success(`商品 #${result.goodsId} 已恢复为「${GOODS_STATUS_LABELS[result.status] ?? result.status}」`)
+    restoreVisible.value = false
+    load()
+  } catch {
+    // 拦截器已提示（例如商品当前未被隐藏）
+  } finally {
+    restoring.value = false
+  }
+}
+
 async function applyUserStatus(s: number) {
   if (!statusUserId.value) {
     ElMessage.warning('请输入用户 ID')
@@ -156,9 +187,10 @@ onMounted(load)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="160">
+      <el-table-column label="操作" width="220">
         <template #default="{ row }">
           <el-button v-if="row.status === 'OPEN'" size="small" type="primary" @click="openResolve(row)">处理</el-button>
+          <el-button v-if="row.targetType === 'GOODS' && row.status === 'RESOLVED'" size="small" type="warning" @click="openRestore(row)">恢复商品</el-button>
           <el-button size="small" @click="openAudit(row)">审计</el-button>
         </template>
       </el-table-column>
@@ -205,6 +237,21 @@ onMounted(load)
         <span class="meta">操作人 #{{ a.actorId }} · {{ formatTime(a.createdAt) }}</span>
       </div>
     </el-dialog>
+
+    <el-dialog v-model="restoreVisible" title="恢复商品" width="520px">
+      <p class="restore-tip">
+        将解除商品 #{{ restoreCurrent?.targetId }} 的隐藏状态：有成交记录时恢复为「已售」，否则恢复为「已下架」，不会自动重新上架。
+      </p>
+      <el-form ref="restoreFormRef" :model="restoreForm" :rules="restoreRules" label-width="100px">
+        <el-form-item label="恢复说明" prop="note">
+          <el-input v-model="restoreForm.note" type="textarea" :rows="4" maxlength="1000" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="restoreVisible = false">取消</el-button>
+        <el-button type="primary" :loading="restoring" @click="submitRestore">确认恢复</el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -236,5 +283,10 @@ onMounted(load)
 .meta {
   color: #909399;
   font-size: 13px;
+}
+.restore-tip {
+  margin: 0 0 12px;
+  color: #606266;
+  line-height: 1.6;
 }
 </style>
