@@ -127,6 +127,15 @@ export function setUserStatus(id: number, status: number) {
   return http.put(`/admin/users/${id}/status`, { status }) as Promise<{ userId: number; status: number }>
 }
 
+export interface GoodsStatus {
+  goodsId: number
+  status: string
+}
+
+export function restoreGoods(reportId: number, note: string) {
+  return http.put(`/admin/reports/${reportId}/goods-restoration`, { note }) as Promise<GoodsStatus>
+}
+
 // ---------- 收藏 ----------
 export function favorite(goodsId: number) {
   return http.put(`/favorites/${goodsId}`) as Promise<Favorite>
